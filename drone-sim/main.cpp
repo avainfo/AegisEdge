@@ -18,8 +18,25 @@ struct DroneState {
 };
 
 int main (int argc, char *argv[]) {
-	sockaddr_in servaddr;
+const char* target_ip = "127.0.0.1";
+    const int target_port = 5005;
 
-	int socketfd = socket(AF_INET, SOCK_DGRAM, 0);
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0)
+    {
+        perror("socket");
+        return 1;
+    }
+
+    sockaddr_in target{};
+    target.sin_family = AF_INET;
+    target.sin_port = htons(target_port);
+
+    if (inet_pton(AF_INET, target_ip, &target.sin_addr) <= 0)
+    {
+        perror("inet_pton");
+        close(sock);
+        return 1;
+    }
 	return 0;
 }
