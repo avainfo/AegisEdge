@@ -6,7 +6,7 @@
 // ===========================================================================
 // Construtor / Destrutor
 // ===========================================================================
-OptimizedHorizonDetector::OptimizedHorizonDetector(const Config& cfg)
+OptimizedHorizonDetector::OptimizedHorizonDetector(const DetectorConfig& cfg)
     : cfg_(cfg)
     , pixels_per_degree_(cfg.frame_height / cfg.v_fov_degrees)
 {}

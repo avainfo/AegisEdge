@@ -5,11 +5,6 @@
 #include <string>
 #include <vector>
 
-// ---------------------------------------------------------------------------
-// Guard de compilação: permite compilar sem o SDK do Hailo instalado.
-// Sem Hailo: o sistema corre em modo IMU-only (útil para simulação).
-// Com Hailo: compila com -DWITH_HAILO e linka com -lhailort
-// ---------------------------------------------------------------------------
 #ifdef WITH_HAILO
 #include <hailo/hailort.hpp>
 #endif
@@ -30,6 +25,28 @@ struct HorizonLine {
 };
 
 // ---------------------------------------------------------------------------
+// Configuração — fora da classe para evitar problema de default args
+// ---------------------------------------------------------------------------
+struct DetectorConfig {
+    // Câmara
+    int   frame_width           = 1920;
+    int   frame_height          = 1080;
+    float v_fov_degrees         = 90.0f;   // ← calibra com a tua câmara real
+
+    // Lógica de decisão
+    float imu_threshold_degrees = 1.5f;
+    int   roi_height_base       = 256;
+    float max_seconds_no_hailo  = 0.5f;
+    int   roi_uncertainty_scale = 4;       // px de ROI extra por px de incerteza
+
+    // Modelo de rede neural
+    int   model_input_w         = 224;
+    int   model_input_h         = 224;
+    float input_norm_mean       = 0.0f;
+    float input_norm_std        = 255.0f;
+};
+
+// ---------------------------------------------------------------------------
 // Filtro de Kalman 1-D
 // Estado: [ offset_y (px), velocidade_y (px/s) ]
 // ---------------------------------------------------------------------------
@@ -37,17 +54,17 @@ struct KalmanHorizon {
     float offset_y   = 0.0f;
     float velocity_y = 0.0f;
 
-    float P_pos = 100.0f;   // incerteza inicial posição  (px²)
-    float P_vel = 50.0f;    // incerteza inicial velocidade
+    float P_pos = 100.0f;
+    float P_vel = 50.0f;
 
-    const float Q_pos   = 0.5f;   // ruído de processo – posição
-    const float Q_vel   = 5.0f;   // ruído de processo – velocidade
-    const float R_imu   = 2.0f;   // ruído de medição IMU   (px²)
-    const float R_hailo = 1.0f;   // ruído de medição Hailo (px²)
+    const float Q_pos   = 0.5f;
+    const float Q_vel   = 5.0f;
+    const float R_imu   = 2.0f;
+    const float R_hailo = 1.0f;
 
     void predict(float dt, float imu_pitch_rate_px_per_s) {
         offset_y   += velocity_y * dt;
-        velocity_y += imu_pitch_rate_px_per_s * dt; // feedforward IMU
+        velocity_y += imu_pitch_rate_px_per_s * dt;
         P_pos += P_vel * dt * dt + Q_pos * dt;
         P_vel += Q_vel * dt;
     }
@@ -66,32 +83,10 @@ struct KalmanHorizon {
 // ---------------------------------------------------------------------------
 class OptimizedHorizonDetector {
 public:
-    struct Config {
-        // Câmara
-        int   frame_width           = 1920;
-        int   frame_height          = 1080;
-        float v_fov_degrees         = 90.0f;   // ← calibra com a tua câmara real
-
-        // Lógica de decisão
-        float imu_threshold_degrees = 1.5f;
-        int   roi_height_base       = 256;
-        float max_seconds_no_hailo  = 0.5f;
-        int   roi_uncertainty_scale = 4;       // px de ROI extra por px de incerteza
-
-        // Modelo de rede neural
-        int   model_input_w    = 224;
-        int   model_input_h    = 224;
-        // Normalização: pixel_float = (pixel_uint8 - mean) / std
-        // ImageNet standard (ajusta se o teu modelo foi treinado diferente)
-        float input_norm_mean  = 0.0f;
-        float input_norm_std   = 255.0f;
-    };
-
-    explicit OptimizedHorizonDetector(const Config& cfg = {});
+    explicit OptimizedHorizonDetector(const DetectorConfig& cfg = DetectorConfig());
     ~OptimizedHorizonDetector();
 
     // Carrega o .hef e inicializa o dispositivo Hailo.
-    // Chama uma vez antes de process().
     // Devolve false se falhar — o sistema continua em modo IMU-only.
     bool init(const std::string& hef_path);
 
@@ -102,19 +97,16 @@ public:
     HorizonLine process(const cv::Mat& frame);
 
 private:
-    Config cfg_;
-    float  pixels_per_degree_;
+    DetectorConfig cfg_;
+    float          pixels_per_degree_;
 
-    // Estado do IMU (protegido por mutex — threads diferentes)
     mutable std::mutex imu_mutex_;
     ImuData last_imu_    = {0.0f, 0.0f};
     ImuData current_imu_ = {0.0f, 0.0f};
 
-    // Kalman
     KalmanHorizon kalman_;
     float current_angle_ = 0.0f;
 
-    // Temporização real (substitui contagem de frames)
     using Clock     = std::chrono::steady_clock;
     using TimePoint = Clock::time_point;
     TimePoint last_hailo_time_   = Clock::now() - std::chrono::seconds(10);
@@ -123,9 +115,8 @@ private:
     bool initialized_     = false;
     bool hailo_available_ = false;
 
-    // Buffers de inferência — alocados uma vez em init() para evitar malloc por frame
-    std::vector<float> input_buffer_;   // [C * H * W] float32 normalizado
-    std::vector<float> output_buffer_;  // [3] → [sin(angle), cos(angle), offset_norm]
+    std::vector<float> input_buffer_;
+    std::vector<float> output_buffer_;
 
 #ifdef WITH_HAILO
     std::unique_ptr<hailort::VDevice>              vdevice_;
@@ -133,8 +124,7 @@ private:
     std::shared_ptr<hailort::ConfiguredInferModel> configured_model_;
 #endif
 
-    // Métodos internos
     HorizonLine callHailoInference(const cv::Mat& cropped_frame);
-    void        preprocessFrame(const cv::Mat& src);   // BGR → RGB → float normalizado
+    void        preprocessFrame(const cv::Mat& src);
     int         adaptiveRoiHeight() const;
 };
