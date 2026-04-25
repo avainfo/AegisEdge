@@ -1,0 +1,19 @@
+{
+  "frame_id": 123,
+  "timestamp_ms": 6334,
+  "image": {
+    "width": 1920,
+    "height": 1080
+  },
+  "horizon": {
+    "detected": true,
+    "type": "POLYLINE",
+    "points": [
+      { "x": 0.05, "y": 0.42 },
+      { "x": 0.50, "y": 0.41 },
+      { "x": 0.95, "y": 0.44 }
+    ],
+    "ground_side": "BELOW",
+    "confidence": 0.76
+  }
+}
