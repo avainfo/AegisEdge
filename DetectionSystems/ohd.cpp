@@ -268,7 +268,7 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
         kalman_.update(imu_predicted_offset, kalman_.R_imu);
 
         float roll_diff  = imu.roll - prev_imu.roll;
-        current_angle_  += roll_diff;
+        current_angle_  -= roll_diff;
 
         // Se não temos Hailo disponível, forçamos initialized a true
         // depois da primeira frame para não ficar preso no caminho pesado
