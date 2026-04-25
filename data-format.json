@@ -1,0 +1,12 @@
+{
+	"timestamp_ms": 1710000000000,
+	"drone_id": "D1",
+	"position": { "x": 42.0, "y": 18.0 },
+	"roll": -12.5,
+	"pitch": 4.2,
+	"yaw": 183.0,
+	"altitude": 72.0,
+	"danger_zones": [
+		{ "x": 60.0, "y": 25.0, "radius": 8.0 }
+  ]
+}
