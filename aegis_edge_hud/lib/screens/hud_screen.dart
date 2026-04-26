@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../models/drone_state.dart';
+import '../models/horizon_data.dart';
 import '../models/link_state.dart';
 import '../painters/horizon_painter.dart';
 import '../painters/tactical_bg_painter.dart';
