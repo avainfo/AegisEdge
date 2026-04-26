@@ -8,8 +8,6 @@ import 'udp_service.dart';
 
 
 class HudController extends ChangeNotifier {
-  static const _udpTimeout = Duration(seconds: 3);
-
   final _udp = UdpService();
   final _demo = DemoService();
 
@@ -37,14 +35,6 @@ class HudController extends ChangeNotifier {
   void _onUdpPacket(DroneState s) {
     if (_demoActive) _deactivateDemo();
     _setState(s);
-  }
-
-  void _activateDemo() {
-    if (_demoActive) return;
-    _demoActive = true;
-    _demo.start();
-    _demoSub = _demo.stream.listen(_setState);
-    notifyListeners();
   }
 
   void _deactivateDemo() {

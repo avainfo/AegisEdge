@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:ui' as ui;
 
 import '../models/horizon_data.dart';
 import '../models/link_state.dart';
@@ -27,14 +26,22 @@ class HorizonPainter extends CustomPainter {
       path.lineTo(pts[i].dx, pts[i].dy);
     }
 
+    // Simulated glow via layered strokes — avoids expensive GPU blur pass
     canvas.drawPath(
       path,
       Paint()
-        ..color = color.withOpacity(0.25 * opacity)
-        ..strokeWidth = 10
+        ..color = color.withOpacity(0.08 * opacity)
+        ..strokeWidth = 16
         ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 8),
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withOpacity(0.18 * opacity)
+        ..strokeWidth = 8
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round,
     );
 
     if (linkState == LinkState.degraded) {

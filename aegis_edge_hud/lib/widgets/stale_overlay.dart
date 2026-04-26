@@ -31,10 +31,28 @@ class _StaleOverlayState extends State<StaleOverlay>
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 700),
-    )..repeat(reverse: true);
+    );
     _fade = Tween<double>(begin: 0.3, end: 0.9).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
     );
+    _syncAnimation();
+  }
+
+  @override
+  void didUpdateWidget(StaleOverlay old) {
+    super.didUpdateWidget(old);
+    if (old.stale != widget.stale || old.linkState != widget.linkState) {
+      _syncAnimation();
+    }
+  }
+
+  void _syncAnimation() {
+    final show = widget.stale || widget.linkState == LinkState.lost;
+    if (show && !_ctrl.isAnimating) {
+      _ctrl.repeat(reverse: true);
+    } else if (!show && _ctrl.isAnimating) {
+      _ctrl.stop();
+    }
   }
 
   @override
@@ -46,14 +64,6 @@ class _StaleOverlayState extends State<StaleOverlay>
   @override
   Widget build(BuildContext context) {
     final show = widget.stale || widget.linkState == LinkState.lost;
-
-    // Pause animation when not visible to avoid unnecessary CPU usage
-    if (show && !_ctrl.isAnimating) {
-      _ctrl.repeat(reverse: true);
-    } else if (!show && _ctrl.isAnimating) {
-      _ctrl.stop();
-    }
-
     if (!show) return const SizedBox.shrink();
 
     final isLost = widget.linkState == LinkState.lost;
