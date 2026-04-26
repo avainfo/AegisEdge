@@ -53,7 +53,7 @@ class _MiniMapState extends State<MiniMap> {
             height: 150,
             child: CustomPaint(
               painter: _MapPainter(
-                trail: List.from(_trail),
+                trail: _trail,
                 currentPos: Offset(widget.state.posX, widget.state.posY),
                 yaw: widget.state.yaw,
                 linkState: widget.state.linkState,
@@ -172,5 +172,10 @@ class _MapPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_MapPainter old) => true;
+  bool shouldRepaint(_MapPainter old) =>
+      old.trail.length != trail.length ||
+      old.currentPos != currentPos ||
+      old.yaw != yaw ||
+      old.linkState != linkState ||
+      old.isLost != isLost;
 }

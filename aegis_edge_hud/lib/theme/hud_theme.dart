@@ -104,5 +104,5 @@ class CornerBracketsPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(CornerBracketsPainter old) =>
-      old.color != color || old.size != size;
+      old.color != color || old.size != size || old.strokeWidth != strokeWidth;
 }

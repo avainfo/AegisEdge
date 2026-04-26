@@ -46,6 +46,14 @@ class _StaleOverlayState extends State<StaleOverlay>
   @override
   Widget build(BuildContext context) {
     final show = widget.stale || widget.linkState == LinkState.lost;
+
+    // Pause animation when not visible to avoid unnecessary CPU usage
+    if (show && !_ctrl.isAnimating) {
+      _ctrl.repeat(reverse: true);
+    } else if (!show && _ctrl.isAnimating) {
+      _ctrl.stop();
+    }
+
     if (!show) return const SizedBox.shrink();
 
     final isLost = widget.linkState == LinkState.lost;

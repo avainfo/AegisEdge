@@ -32,10 +32,6 @@ class _HudScreenState extends State<HudScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final ctrl = context.watch<HudController>();
-    final s = ctrl.state;
-    final accent = AegisColors.forState(s.linkState);
-
     return Scaffold(
       backgroundColor: AegisColors.background,
       body: LayoutBuilder(
@@ -43,54 +39,70 @@ class _HudScreenState extends State<HudScreen> {
           final isWide = constraints.maxWidth > 700;
           return Stack(
             children: [
+              // Static — never rebuilds, isolated in its own layer
               const Positioned.fill(
-                child: CustomPaint(painter: TacticalBgPainter()),
-              ),
-
-              Positioned.fill(
-                child: CustomPaint(
-                  painter: HorizonPainter(
-                    horizon: s.horizon,
-                    linkState: s.linkState,
-                  ),
+                child: RepaintBoundary(
+                  child: CustomPaint(painter: TacticalBgPainter()),
                 ),
               ),
 
-              Positioned.fill(
-                child: StaleOverlay(
-                  linkState: s.linkState,
-                  stale: s.stale,
-                  lastUpdateMs: s.lastUpdateMs,
-                ),
-              ),
+              // Dynamic — only rebuilt when HudController notifies
+              Selector<HudController, (DroneState, bool)>(
+                selector: (_, ctrl) => (ctrl.state, ctrl.demoActive),
+                builder: (context, data, _) {
+                  final s = data.$1;
+                  final demoActive = data.$2;
+                  final accent = AegisColors.forState(s.linkState);
+                  return Stack(
+                    children: [
+                      Positioned.fill(
+                        child: CustomPaint(
+                          painter: HorizonPainter(
+                            horizon: s.horizon,
+                            linkState: s.linkState,
+                          ),
+                        ),
+                      ),
 
-              Positioned.fill(
-                child: CustomPaint(
-                  painter: CornerBracketsPainter(
-                    color: accent.withOpacity(0.5),
-                    size: 32,
-                  ),
-                ),
-              ),
+                      Positioned.fill(
+                        child: StaleOverlay(
+                          linkState: s.linkState,
+                          stale: s.stale,
+                          lastUpdateMs: s.lastUpdateMs,
+                        ),
+                      ),
 
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: _TopBar(
-                  accent: accent,
-                  linkState: s.linkState,
-                  demoMode: ctrl.demoActive,
-                ),
-              ),
+                      Positioned.fill(
+                        child: CustomPaint(
+                          painter: CornerBracketsPainter(
+                            color: accent.withOpacity(0.5),
+                            size: 32,
+                          ),
+                        ),
+                      ),
 
-              Positioned(
-                bottom: 16,
-                left: 16,
-                right: 16,
-                child: isWide
-                    ? _WideBottomRow(state: s)
-                    : _NarrowBottomColumn(state: s),
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: _TopBar(
+                          accent: accent,
+                          linkState: s.linkState,
+                          demoMode: demoActive,
+                        ),
+                      ),
+
+                      Positioned(
+                        bottom: 16,
+                        left: 16,
+                        right: 16,
+                        child: isWide
+                            ? _WideBottomRow(state: s)
+                            : _NarrowBottomColumn(state: s),
+                      ),
+                    ],
+                  );
+                },
               ),
             ],
           );
@@ -182,14 +194,21 @@ class _ClockWidget extends StatefulWidget {
 
 class _ClockWidgetState extends State<_ClockWidget> {
   String _time = '';
+  late final StreamSubscription<void> _ticker;
 
   @override
   void initState() {
     super.initState();
     _updateTime();
-    Stream.periodic(const Duration(seconds: 1)).listen((_) {
+    _ticker = Stream.periodic(const Duration(seconds: 1)).listen((_) {
       if (mounted) setState(_updateTime);
     });
+  }
+
+  @override
+  void dispose() {
+    _ticker.cancel();
+    super.dispose();
   }
 
   void _updateTime() {

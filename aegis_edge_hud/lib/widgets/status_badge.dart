@@ -38,18 +38,23 @@ class _StatusBadgeState extends State<StatusBadge>
   }
 
   @override
+  void didUpdateWidget(StatusBadge old) {
+    super.didUpdateWidget(old);
+    if (old.linkState != widget.linkState) {
+      final speed = switch (widget.linkState) {
+        LinkState.normal => const Duration(milliseconds: 2000),
+        LinkState.degraded => const Duration(milliseconds: 800),
+        LinkState.lost => const Duration(milliseconds: 350),
+      };
+      _pulseCtrl.duration = speed;
+      _pulseCtrl.repeat(reverse: true);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final color = AegisColors.forState(widget.linkState);
     final label = widget.linkState.displayLabel;
-    final speed = switch (widget.linkState) {
-      LinkState.normal => const Duration(milliseconds: 2000),
-      LinkState.degraded => const Duration(milliseconds: 800),
-      LinkState.lost => const Duration(milliseconds: 350),
-    };
-
-    if (_pulseCtrl.duration != speed) {
-      _pulseCtrl.duration = speed;
-    }
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 400),
