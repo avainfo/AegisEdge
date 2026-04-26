@@ -329,7 +329,7 @@ A interface da função `callVision()` é **idêntica** nos três modos, por iss
 
 ## Licença
 
-A definir pelo autor.
+
 
 ## Referências relevantes
 
