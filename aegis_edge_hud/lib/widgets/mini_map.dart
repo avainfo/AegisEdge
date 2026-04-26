@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -16,14 +17,19 @@ class MiniMap extends StatefulWidget {
 }
 
 class _MiniMapState extends State<MiniMap> {
-  final List<Offset> _trail = [];
+  // CircularBuffer avoids removeAt(0) O(n) shift on every update
+  final _trail = ListQueue<Offset>(MiniMap._trailMax + 1);
 
   @override
   void didUpdateWidget(MiniMap old) {
     super.didUpdateWidget(old);
     if (widget.state.linkState != LinkState.lost) {
-      _trail.add(Offset(widget.state.posX, widget.state.posY));
-      if (_trail.length > MiniMap._trailMax) _trail.removeAt(0);
+      final pos = Offset(widget.state.posX, widget.state.posY);
+      // Skip duplicate positions to avoid useless painter rebuilds
+      if (_trail.isEmpty || _trail.last != pos) {
+        if (_trail.length >= MiniMap._trailMax) _trail.removeFirst();
+        _trail.addLast(pos);
+      }
     }
   }
 
@@ -53,7 +59,7 @@ class _MiniMapState extends State<MiniMap> {
             height: 150,
             child: CustomPaint(
               painter: _MapPainter(
-                trail: _trail,
+                trail: _trail.toList(growable: false),
                 currentPos: Offset(widget.state.posX, widget.state.posY),
                 yaw: widget.state.yaw,
                 linkState: widget.state.linkState,
@@ -86,7 +92,6 @@ class _MapPainter extends CustomPainter {
   final double yaw;
   final LinkState linkState;
   final bool isLost;
-
 
   static const _minX = 8.0, _maxX = 18.0, _minY = 5.0, _maxY = 14.0;
 

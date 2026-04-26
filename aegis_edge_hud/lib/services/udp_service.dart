@@ -20,18 +20,20 @@ class UdpService {
       _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port);
       _socket!.listen((RawSocketEvent event) {
         if (event == RawSocketEvent.read) {
-          // Drain all available datagrams in one event cycle
+          // Drain all available datagrams, keep only the latest
+          DroneState? latest;
           while (true) {
             final dg = _socket!.receive();
             if (dg == null) break;
             try {
               final payload = utf8.decode(dg.data);
               final json = jsonDecode(payload) as Map<String, dynamic>;
-              _controller.add(DroneState.fromJson(json));
+              latest = DroneState.fromJson(json);
             } catch (e) {
               debugPrint('UDP parse error: $e');
             }
           }
+          if (latest != null) _controller.add(latest);
         }
       });
       return true;

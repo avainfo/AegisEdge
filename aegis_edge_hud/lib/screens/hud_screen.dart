@@ -48,32 +48,42 @@ class _HudScreenState extends State<HudScreen> {
                 ),
               ),
 
-              // Dynamic — only rebuilt when HudController notifies
-              Selector<HudController, (DroneState, bool)>(
-                selector: (_, ctrl) => (ctrl.state, ctrl.demoActive),
-                builder: (context, data, _) {
-                  final s = data.$1;
-                  final demoActive = data.$2;
-                  final accent = AegisColors.forState(s.linkState);
+              // Layer 1: horizon + stale — depends on flight data & link state
+              Selector<HudController, ({HorizonData horizon, LinkState linkState, bool stale, int lastUpdateMs})>(
+                selector: (_, ctrl) => (
+                  horizon: ctrl.state.horizon,
+                  linkState: ctrl.state.linkState,
+                  stale: ctrl.state.stale,
+                  lastUpdateMs: ctrl.state.lastUpdateMs,
+                ),
+                builder: (_, d, __) => Stack(
+                  children: [
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter: HorizonPainter(
+                          horizon: d.horizon,
+                          linkState: d.linkState,
+                        ),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: StaleOverlay(
+                        linkState: d.linkState,
+                        stale: d.stale,
+                        lastUpdateMs: d.lastUpdateMs,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Layer 2: corner brackets + top bar — depends only on linkState/demoMode
+              Selector<HudController, (LinkState, bool)>(
+                selector: (_, ctrl) => (ctrl.state.linkState, ctrl.demoActive),
+                builder: (_, d, __) {
+                  final accent = AegisColors.forState(d.$1);
                   return Stack(
                     children: [
-                      Positioned.fill(
-                        child: CustomPaint(
-                          painter: HorizonPainter(
-                            horizon: s.horizon,
-                            linkState: s.linkState,
-                          ),
-                        ),
-                      ),
-
-                      Positioned.fill(
-                        child: StaleOverlay(
-                          linkState: s.linkState,
-                          stale: s.stale,
-                          lastUpdateMs: s.lastUpdateMs,
-                        ),
-                      ),
-
                       Positioned.fill(
                         child: CustomPaint(
                           painter: CornerBracketsPainter(
@@ -82,30 +92,34 @@ class _HudScreenState extends State<HudScreen> {
                           ),
                         ),
                       ),
-
                       Positioned(
                         top: 0,
                         left: 0,
                         right: 0,
                         child: _TopBar(
                           accent: accent,
-                          linkState: s.linkState,
-                          demoMode: demoActive,
+                          linkState: d.$1,
+                          demoMode: d.$2,
                         ),
-                      ),
-
-                      Positioned(
-                        bottom: 16,
-                        left: 16,
-                        right: 16,
-                        child: isWide
-                            ? _WideBottomRow(state: s)
-                            : _NarrowBottomColumn(state: s),
                       ),
                     ],
                   );
                 },
               ),
+
+              // Layer 3: bottom panels — full DroneState needed
+              Selector<HudController, DroneState>(
+                selector: (_, ctrl) => ctrl.state,
+                builder: (_, s, __) => Positioned(
+                  bottom: 16,
+                  left: 16,
+                  right: 16,
+                  child: isWide
+                      ? _WideBottomRow(state: s)
+                      : _NarrowBottomColumn(state: s),
+                ),
+              ),
+
             ],
           );
         },
