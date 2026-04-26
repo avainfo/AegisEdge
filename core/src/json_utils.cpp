@@ -54,7 +54,7 @@ std::string serializeEnrichedJson(const TelemetryProcessor& processor) {
     j["latency_ms"] = processor.getLatency();
     j["stale"] = processor.isStale();
     j["source_valid"] = processor.isSourceValid();
-    j["last_update_ms"] = processor.getLastUpdateMs();
+    j["last_update_ms"] = processor.getTimeSinceLastPacketMs();
     
     j["position"] = { {"x", tel.posX}, {"y", tel.posY} };
     j["roll"] = tel.roll;

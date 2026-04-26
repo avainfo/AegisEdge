@@ -40,6 +40,7 @@ public:
     bool isStale() const;
     bool isSourceValid() const;
     int64_t getLastUpdateMs() const;
+    int64_t getTimeSinceLastPacketMs() const;
     const TelemetryData& getLastValidTelemetry() const;
 
 private:
