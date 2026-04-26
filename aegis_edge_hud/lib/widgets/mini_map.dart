@@ -54,16 +54,18 @@ class _MiniMapState extends State<MiniMap> {
             ),
           ),
           const SizedBox(height: 6),
-          SizedBox(
-            width: 150,
-            height: 150,
-            child: CustomPaint(
-              painter: _MapPainter(
-                trail: _trail.toList(growable: false),
-                currentPos: Offset(widget.state.posX, widget.state.posY),
-                yaw: widget.state.yaw,
-                linkState: widget.state.linkState,
-                isLost: isLost,
+          ClipRect(
+            child: SizedBox(
+              width: 150,
+              height: 150,
+              child: CustomPaint(
+                painter: _MapPainter(
+                  trail: _trail.toList(growable: false),
+                  currentPos: Offset(widget.state.posX, widget.state.posY),
+                  yaw: widget.state.yaw,
+                  linkState: widget.state.linkState,
+                  isLost: isLost,
+                ),
               ),
             ),
           ),
@@ -103,10 +105,17 @@ class _MapPainter extends CustomPainter {
     required this.isLost,
   });
 
-  Offset _toCanvas(Offset world, Size size) => Offset(
-        (world.dx - _minX) / (_maxX - _minX) * size.width,
-        (world.dy - _minY) / (_maxY - _minY) * size.height,
-      );
+  Offset _toCanvas(Offset world, Size size) {
+    final x = ((world.dx - _minX) / (_maxX - _minX) * size.width)
+        .clamp(0.0, size.width)
+        .toDouble();
+
+    final y = ((world.dy - _minY) / (_maxY - _minY) * size.height)
+        .clamp(0.0, size.height)
+        .toDouble();
+
+    return Offset(x, y);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -131,6 +140,11 @@ class _MapPainter extends CustomPainter {
       for (int i = 1; i < trail.length; i++) {
         final a = _toCanvas(trail[i - 1], size);
         final b = _toCanvas(trail[i], size);
+        
+        if (!a.dx.isFinite || !a.dy.isFinite || !b.dx.isFinite || !b.dy.isFinite) {
+          continue;
+        }
+
         canvas.drawLine(
           a,
           b,
