@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import '../models/drone_state.dart';
 
 
@@ -21,10 +23,13 @@ class UdpService {
           final dg = _socket!.receive();
           if (dg == null) return;
           try {
-            final json =
-                jsonDecode(utf8.decode(dg.data)) as Map<String, dynamic>;
+            final payload = utf8.decode(dg.data);
+            debugPrint('Raw UDP: $payload');
+            final json = jsonDecode(payload) as Map<String, dynamic>;
             _controller.add(DroneState.fromJson(json));
-          } catch (_) {}
+          } catch (e) {
+            debugPrint('Error parsing UDP packet: $e');
+          }
         }
       });
       return true;

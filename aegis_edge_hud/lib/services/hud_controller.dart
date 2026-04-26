@@ -17,7 +17,6 @@ class HudController extends ChangeNotifier {
   bool _demoActive = false;
   bool _initialized = false;
 
-  Timer? _timeoutTimer;
   StreamSubscription<DroneState>? _udpSub;
   StreamSubscription<DroneState>? _demoSub;
 
@@ -32,21 +31,12 @@ class HudController extends ChangeNotifier {
 
     if (udpOk) {
       _udpSub = _udp.stream.listen(_onUdpPacket);
-      _resetTimeout();
-    } else {
-      _activateDemo();
     }
   }
 
   void _onUdpPacket(DroneState s) {
-    _resetTimeout();
     if (_demoActive) _deactivateDemo();
     _setState(s);
-  }
-
-  void _resetTimeout() {
-    _timeoutTimer?.cancel();
-    _timeoutTimer = Timer(_udpTimeout, _activateDemo);
   }
 
   void _activateDemo() {
@@ -72,7 +62,6 @@ class HudController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _timeoutTimer?.cancel();
     _udpSub?.cancel();
     _demoSub?.cancel();
     _udp.dispose();
