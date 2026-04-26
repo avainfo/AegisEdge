@@ -5,8 +5,30 @@
 #include <string>
 #include <vector>
 
+// ---------------------------------------------------------------------------
+// Modos de compilacao (mutuamente exclusivos para a fonte de visao):
+//
+//   (sem flag)        -> IMU only      (sem visao, so Kalman+IMU)
+//   -DWITH_HOUGH      -> IMU + Hough   (CV classico como proxy)
+//   -DWITH_HAILO      -> IMU + Hailo   (NPU real)
+//
+// Se ambos os flags forem definidos, WITH_HAILO tem prioridade.
+// ---------------------------------------------------------------------------
+
 #ifdef WITH_HAILO
 #include <hailo/hailort.hpp>
+// Se WITH_HAILO estiver definido, desactivamos o Hough mesmo que o utilizador
+// passe ambos os flags por engano.
+#ifdef WITH_HOUGH
+#undef WITH_HOUGH
+#endif
+#endif
+
+// Flag interna: ha alguma fonte de visao disponivel?
+#if defined(WITH_HAILO) || defined(WITH_HOUGH)
+#define HAS_VISION 1
+#else
+#define HAS_VISION 0
 #endif
 
 // ---------------------------------------------------------------------------
@@ -14,32 +36,29 @@
 // ---------------------------------------------------------------------------
 
 struct ImuData {
-    float roll;   // graus, positivo = roll para a direita
-    float pitch;  // graus, positivo = nariz para cima
+    float roll;
+    float pitch;
 };
 
 struct HorizonLine {
-    float angle;        // graus
-    float offset;       // pixels relativos ao centro da imagem (Y=0 é o centro)
-    bool  is_estimated; // true = apenas IMU | false = validado pela rede
+    float angle;
+    float offset;
+    bool  is_estimated;
 };
 
 // ---------------------------------------------------------------------------
-// Configuração — fora da classe para evitar problema de default args
+// Configuracao
 // ---------------------------------------------------------------------------
 struct DetectorConfig {
-    // Câmara
     int   frame_width           = 1920;
     int   frame_height          = 1080;
-    float v_fov_degrees         = 90.0f;   // ← calibra com a tua câmara real
+    float v_fov_degrees         = 90.0f;
 
-    // Lógica de decisão
     float imu_threshold_degrees = 1.5f;
     int   roi_height_base       = 256;
     float max_seconds_no_hailo  = 0.5f;
-    int   roi_uncertainty_scale = 4;       // px de ROI extra por px de incerteza
+    int   roi_uncertainty_scale = 4;
 
-    // Modelo de rede neural
     int   model_input_w         = 224;
     int   model_input_h         = 224;
     float input_norm_mean       = 0.0f;
@@ -48,7 +67,6 @@ struct DetectorConfig {
 
 // ---------------------------------------------------------------------------
 // Filtro de Kalman 1-D
-// Estado: [ offset_y (px), velocidade_y (px/s) ]
 // ---------------------------------------------------------------------------
 struct KalmanHorizon {
     float offset_y   = 0.0f;
@@ -79,21 +97,21 @@ struct KalmanHorizon {
 };
 
 // ---------------------------------------------------------------------------
-// Detector principal
+// Detector
 // ---------------------------------------------------------------------------
 class OptimizedHorizonDetector {
 public:
     explicit OptimizedHorizonDetector(const DetectorConfig& cfg = DetectorConfig());
     ~OptimizedHorizonDetector();
 
-    // Carrega o .hef e inicializa o dispositivo Hailo.
-    // Devolve false se falhar — o sistema continua em modo IMU-only.
-    bool init(const std::string& hef_path);
+    // Indica qual o modo activo (string para imprimir no arranque)
+    static const char* visionModeName();
 
-    // Thread-safe: pode ser chamado do driver do IMU a qualquer momento
+    // Carrega o .hef. Apenas relevante em modo Hailo.
+    // Em modo Hough ou IMU-only, retorna true sem fazer nada.
+    bool init(const std::string& hef_path = "");
+
     void updateImu(const ImuData& imu);
-
-    // Pipeline principal — chamado na thread da câmara
     HorizonLine process(const cv::Mat& frame);
 
 private:
@@ -113,7 +131,7 @@ private:
     TimePoint last_process_time_ = Clock::now();
 
     bool initialized_     = false;
-    bool hailo_available_ = false;
+    bool vision_available_ = false;
 
     std::vector<float> input_buffer_;
     std::vector<float> output_buffer_;
@@ -124,7 +142,7 @@ private:
     std::shared_ptr<hailort::ConfiguredInferModel> configured_model_;
 #endif
 
-    HorizonLine callHailoInference(const cv::Mat& cropped_frame);
+    HorizonLine callVision(const cv::Mat& cropped_frame);
     void        preprocessFrame(const cv::Mat& src);
     int         adaptiveRoiHeight() const;
 };
