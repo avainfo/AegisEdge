@@ -155,6 +155,14 @@ def generate_mjpeg():
 def video_feed():
     return Response(generate_mjpeg(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/snapshot')
+def snapshot():
+    with frame_lock:
+        frame = latest_frame
+    if frame is None:
+        return "No frame", 404
+    return Response(frame, mimetype='image/jpeg')
+
 if __name__ == '__main__':
     t = threading.Thread(target=airsim_loop, daemon=True)
     t.start()
