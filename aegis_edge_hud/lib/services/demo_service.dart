@@ -13,6 +13,7 @@ class DemoService {
   final _controller = StreamController<DroneState>.broadcast();
   Timer? _timer;
   int _elapsedMs = 0;
+  int _frameIdCounter = 0;
   DroneState? _lastGoodState;
 
   Stream<DroneState> get stream => _controller.stream;
@@ -68,6 +69,8 @@ class DemoService {
     final tilt = roll * 0.004;
 
     return DroneState(
+      frameId: ++_frameIdCounter,
+      timestampMs: DateTime.now().millisecondsSinceEpoch,
       linkState: linkState,
       latencyMs: latencyMs,
       stale: stale,
@@ -96,6 +99,8 @@ class DemoService {
   DroneState _makeLost(DroneState? last) {
     if (last == null) return DroneState.initial();
     return DroneState(
+      frameId: last.frameId,
+      timestampMs: last.timestampMs,
       linkState: LinkState.lost,
       latencyMs: last.latencyMs,
       stale: true,
