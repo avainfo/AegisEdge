@@ -225,7 +225,7 @@ public:
         ssize_t sent = sendto(sockfd_, data.c_str(), data.size(), 0,
                (const struct sockaddr*)&dest_, sizeof(dest_));
         if (sent < 0) {
-            std::cerr << "[UDP] Warning: failed to send packet.\n";
+            std::cerr << "[UDP] Warning: failed to send packet\n";
         }
     }
 
@@ -388,8 +388,7 @@ int main(int argc, char* argv[]) {
         total_frames++;
         if (!result.is_estimated) hailo_calls++;
 
-        bool usable_horizon = result.confidence > 0.0f;
-        bool detected = usable_horizon;
+        bool detected = result.confidence > 0.0f;
 
         auto pts = horizonToPoints(result, W, H);
         std::string json = toJson(tel, result, pts, detected, W, H);
