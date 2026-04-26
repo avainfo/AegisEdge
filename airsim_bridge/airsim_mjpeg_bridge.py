@@ -89,12 +89,15 @@ def airsim_loop():
         try:
             # Get Image
             responses = client.simGetImages([
-                airsim.ImageRequest("0", airsim.ImageType.Scene, False, False)
+                airsim.ImageRequest("0", airsim.ImageType.Scene, False, True)
             ])
             if responses and len(responses) > 0:
                 frame_data = responses[0].image_data_uint8
+                if not frame_data:
+                    print("Warning: AirSim returned empty image_data_uint8")
             else:
                 frame_data = None
+                print("Warning: AirSim returned no response for simGetImages")
                 
             # Get Kinematics
             state = client.getMultirotorState()
@@ -130,7 +133,14 @@ def airsim_loop():
                 latest_state_json = json.dumps(telemetry)
                 
             # Send UDP Telemetry
-            sock.sendto(latest_state_json.encode('utf-8'), (UDP_IP, UDP_PORT))
+            try:
+                sock.sendto(latest_state_json.encode('utf-8'), (UDP_IP, UDP_PORT))
+            except Exception as e:
+                print(f"Warning: UDP send failed: {e}")
+                
+            if frame_id % 30 == 0:
+                print(f"[FRAME] id={frame_id} bytes={len(frame_data) if frame_data else 0} ts={timestamp_ms}")
+                print(f"[UDP] sent telemetry to {UDP_IP}:{UDP_PORT}")
             
         except Exception as e:
             print(f"Error in AirSim loop: {e}")
@@ -147,7 +157,7 @@ def generate_mjpeg():
         
         if frame is not None:
             yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                   b'Content-Type: image/png\r\n\r\n' + frame + b'\r\n')
         
         time.sleep(1.0 / TARGET_FPS)
 
@@ -160,8 +170,8 @@ def snapshot():
     with frame_lock:
         frame = latest_frame
     if frame is None:
-        return "No frame", 404
-    return Response(frame, mimetype='image/jpeg')
+        return "No valid frame yet", 404
+    return Response(frame, mimetype='image/png')
 
 if __name__ == '__main__':
     t = threading.Thread(target=airsim_loop, daemon=True)
