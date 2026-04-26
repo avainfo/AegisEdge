@@ -14,8 +14,6 @@ OptimizedHorizonDetector::OptimizedHorizonDetector(const DetectorConfig& cfg)
 OptimizedHorizonDetector::~OptimizedHorizonDetector() = default;
 
 // ===========================================================================
-// visionModeName() - string identificadora do modo activo
-// ===========================================================================
 const char* OptimizedHorizonDetector::visionModeName() {
 #if defined(WITH_HAILO)
     return "IMU + Hailo (NPU)";
@@ -27,58 +25,93 @@ const char* OptimizedHorizonDetector::visionModeName() {
 }
 
 // ===========================================================================
-// init()
-// ===========================================================================
 bool OptimizedHorizonDetector::init(const std::string& hef_path) {
     std::cout << "[Detector] Modo: " << visionModeName() << "\n";
 
 #if defined(WITH_HAILO)
-    // ---- MODO HAILO ----
+    // ---- 1. Criar VDevice ----
     auto vdevice_exp = hailort::VDevice::create();
     if (!vdevice_exp) {
-        std::cerr << "[Hailo] Falha ao criar VDevice\n";
+        std::cerr << "[Hailo] Falha ao criar VDevice (status="
+                  << vdevice_exp.status() << ")\n";
         vision_available_ = false;
         return false;
     }
     vdevice_ = vdevice_exp.release();
 
+    // ---- 2. Criar InferModel a partir do .hef ----
     auto infer_model_exp = vdevice_->create_infer_model(hef_path);
     if (!infer_model_exp) {
-        std::cerr << "[Hailo] Falha ao carregar HEF '" << hef_path << "'\n";
+        std::cerr << "[Hailo] Falha ao carregar HEF '" << hef_path
+                  << "' (status=" << infer_model_exp.status() << ")\n";
         vision_available_ = false;
         return false;
     }
     infer_model_ = infer_model_exp.release();
     infer_model_->set_batch_size(1);
 
-    auto& input = infer_model_->input();
-    input->set_format_type(HAILO_FORMAT_TYPE_FLOAT32);
-
-    auto configured_exp = infer_model_->configure();
-    if (!configured_exp) {
-        std::cerr << "[Hailo] Falha ao configurar o modelo\n";
+    // ---- 3. Descobrir nomes de input e output ----
+    auto input_names  = infer_model_->get_input_names();
+    auto output_names = infer_model_->get_output_names();
+    if (input_names.empty() || output_names.empty()) {
+        std::cerr << "[Hailo] Modelo sem inputs ou outputs.\n";
         vision_available_ = false;
         return false;
     }
-    configured_model_ = configured_exp.release();
+    input_name_  = input_names[0];
+    output_name_ = output_names[0];
 
+    // ---- 4. Definir formato do input para float32 ----
+    // input() devolve por valor — guardar em variavel local primeiro
+    auto input_stream = infer_model_->input(input_name_);
+    if (!input_stream) {
+        std::cerr << "[Hailo] Falha ao obter input stream.\n";
+        vision_available_ = false;
+        return false;
+    }
+    input_stream->set_format_type(HAILO_FORMAT_TYPE_FLOAT32);
+
+    auto output_stream = infer_model_->output(output_name_);
+    if (!output_stream) {
+        std::cerr << "[Hailo] Falha ao obter output stream.\n";
+        vision_available_ = false;
+        return false;
+    }
+    output_stream->set_format_type(HAILO_FORMAT_TYPE_FLOAT32);
+
+    // ---- 5. Configurar o modelo ----
+    auto configured_exp = infer_model_->configure();
+    if (!configured_exp) {
+        std::cerr << "[Hailo] Falha ao configurar modelo (status="
+                  << configured_exp.status() << ")\n";
+        vision_available_ = false;
+        return false;
+    }
+    // Novo API: configure() devolve ConfiguredInferModel por valor.
+    // Movemo-lo para o nosso unique_ptr.
+    configured_model_ =
+        std::make_unique<hailort::ConfiguredInferModel>(configured_exp.release());
+
+    // ---- 6. Pre-alocar buffers ----
     const size_t input_size = 3 * cfg_.model_input_h * cfg_.model_input_w;
     input_buffer_.resize(input_size, 0.0f);
     output_buffer_.resize(3, 0.0f);
 
-    std::cout << "[Hailo] Inicializado. HEF: " << hef_path << "\n";
+    std::cout << "[Hailo] Inicializado com sucesso.\n";
+    std::cout << "        HEF:    " << hef_path << "\n";
+    std::cout << "        Input:  " << input_name_  << "\n";
+    std::cout << "        Output: " << output_name_ << "\n";
+
     vision_available_ = true;
     return true;
 
 #elif defined(WITH_HOUGH)
-    // ---- MODO HOUGH ----
     (void)hef_path;
     std::cout << "[Hough] Pronto a usar.\n";
     vision_available_ = true;
     return true;
 
 #else
-    // ---- MODO IMU-ONLY ----
     (void)hef_path;
     std::cout << "[IMU] Sem visao - corre apenas com Kalman + IMU.\n";
     vision_available_ = false;
@@ -87,15 +120,11 @@ bool OptimizedHorizonDetector::init(const std::string& hef_path) {
 }
 
 // ===========================================================================
-// updateImu()
-// ===========================================================================
 void OptimizedHorizonDetector::updateImu(const ImuData& imu) {
     std::lock_guard<std::mutex> lock(imu_mutex_);
     current_imu_ = imu;
 }
 
-// ===========================================================================
-// preprocessFrame() - so usado em modo Hailo
 // ===========================================================================
 void OptimizedHorizonDetector::preprocessFrame(const cv::Mat& src) {
 #if defined(WITH_HAILO)
@@ -124,32 +153,35 @@ void OptimizedHorizonDetector::preprocessFrame(const cv::Mat& src) {
 }
 
 // ===========================================================================
-// callVision() - dispatch consoante o modo
-// ===========================================================================
 HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
 
 #if defined(WITH_HAILO)
-    // ---- HAILO ----
-    if (!vision_available_ || !configured_model_) return {0.0f, 0.0f, true, 0.0f};
+    if (!vision_available_ || !configured_model_) return {0.0f, 0.0f, true};
     preprocessFrame(cropped_frame);
 
+    // Criar bindings (cada inferencia tem o seu)
     auto bindings_exp = configured_model_->create_bindings();
-    if (!bindings_exp) return {0.0f, 0.0f, true, 0.0f};
+    if (!bindings_exp) return {0.0f, 0.0f, true};
     auto bindings = bindings_exp.release();
 
-    auto status = bindings.input()->set_buffer(
+    // Apontar buffer de input
+    auto in_status = bindings.input(input_name_)->set_buffer(
         hailort::MemoryView(input_buffer_.data(),
                             input_buffer_.size() * sizeof(float)));
-    if (status != HAILO_SUCCESS) return {0.0f, 0.0f, true, 0.0f};
+    if (in_status != HAILO_SUCCESS) return {0.0f, 0.0f, true};
 
-    status = bindings.output()->set_buffer(
+    // Apontar buffer de output
+    auto out_status = bindings.output(output_name_)->set_buffer(
         hailort::MemoryView(output_buffer_.data(),
                             output_buffer_.size() * sizeof(float)));
-    if (status != HAILO_SUCCESS) return {0.0f, 0.0f, true, 0.0f};
+    if (out_status != HAILO_SUCCESS) return {0.0f, 0.0f, true};
 
-    status = configured_model_->run(bindings, std::chrono::milliseconds(100));
-    if (status != HAILO_SUCCESS) return {0.0f, 0.0f, true, 0.0f};
+    // Executar inferencia (timeout 100ms)
+    auto run_status = configured_model_->run(bindings,
+                                             std::chrono::milliseconds(100));
+    if (run_status != HAILO_SUCCESS) return {0.0f, 0.0f, true};
 
+    // Pos-processamento: [sin(angle), cos(angle), offset_norm]
     float sin_angle   = output_buffer_[0];
     float cos_angle   = output_buffer_[1];
     float offset_norm = output_buffer_[2];
@@ -157,11 +189,10 @@ HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
     float angle_deg = std::atan2f(sin_angle, cos_angle)
                     * (180.0f / static_cast<float>(M_PI));
     float offset_px = offset_norm * (cropped_frame.rows / 2.0f);
-    return {angle_deg, offset_px, false, 0.82f};
+    return {angle_deg, offset_px, false};
 
 #elif defined(WITH_HOUGH)
-    // ---- HOUGH (escolhe a UNICA linha mais consistente com o prior) ----
-    if (cropped_frame.empty()) return {0.0f, 0.0f, true, 0.0f};
+    if (cropped_frame.empty()) return {0.0f, 0.0f, true};
 
     cv::Mat gray;
     cv::cvtColor(cropped_frame, gray, cv::COLOR_BGR2GRAY);
@@ -178,10 +209,8 @@ HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
     cv::HoughLinesP(edges, lines, 1, CV_PI / 180.0,
                     threshold, min_length, max_gap);
 
-    if (lines.empty()) return {0.0f, 0.0f, true, 0.0f};
+    if (lines.empty()) return {0.0f, 0.0f, true};
 
-    // Prior: o ROI ja esta centrado em torno do prior do Kalman, logo
-    // o horizonte esperado esta proximo do meio do crop.
     float prior_y_in_crop = cropped_frame.rows * 0.5f;
     float sigma           = cropped_frame.rows * 0.3f;
 
@@ -214,23 +243,18 @@ HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
     }
 
     if (best_score < 1.0f || best_length < min_length) {
-        return {0.0f, 0.0f, true, 0.0f};
+        return {0.0f, 0.0f, true};
     }
 
     float offset_from_crop_center = best_y - cropped_frame.rows * 0.5f;
-    // Scale confidence: higher score = higher confidence, capped at 0.90
-    float conf = std::min(0.90f, 0.55f + 0.001f * best_score);
-    return {best_angle, offset_from_crop_center, false, conf};
+    return {best_angle, offset_from_crop_center, false};
 
 #else
-    // ---- IMU-ONLY: nao deveriamos sequer ser chamados ----
     (void)cropped_frame;
-    return {0.0f, 0.0f, true, 0.0f};
+    return {0.0f, 0.0f, true};
 #endif
 }
 
-// ===========================================================================
-// adaptiveRoiHeight()
 // ===========================================================================
 int OptimizedHorizonDetector::adaptiveRoiHeight() const {
     float uncertainty = kalman_.uncertainty_px();
@@ -239,8 +263,6 @@ int OptimizedHorizonDetector::adaptiveRoiHeight() const {
     return std::min(roi, cfg_.frame_height);
 }
 
-// ===========================================================================
-// process()
 // ===========================================================================
 HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
 
@@ -272,8 +294,6 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
 
     bool got_vision = false;
 
-    float final_confidence = 0.0f;
-
 #if HAS_VISION
     if (needs_vision && vision_available_) {
         float predicted_center_y = (cfg_.frame_height / 2.0f) + kalman_.offset_y;
@@ -301,12 +321,10 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
                 last_hailo_time_ = now;
                 initialized_     = true;
                 got_vision       = true;
-                final_confidence = vision_result.confidence;
             }
         }
     }
 #else
-    // IMU only mode - silence unused-variable warnings
     (void)frame;
     (void)needs_vision;
     (void)seconds_since_hailo;
@@ -319,14 +337,7 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
         float imu_predicted_offset = imu.pitch * pixels_per_degree_;
         kalman_.update(imu_predicted_offset, kalman_.R_imu);
 
-        final_confidence = std::max(
-            0.30f,
-            0.55f - 0.005f * kalman_.uncertainty_px()
-        );
-
 #if !HAS_VISION
-        // Em modo IMU-only marcamos initialized depois da primeira frame
-        // para nao ficar preso na flag !initialized_
         initialized_ = true;
 #endif
     }
@@ -336,5 +347,5 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
         last_imu_ = imu;
     }
 
-    return { current_angle_, kalman_.offset_y, !got_vision, final_confidence };
+    return { current_angle_, kalman_.offset_y, !got_vision };
 }
