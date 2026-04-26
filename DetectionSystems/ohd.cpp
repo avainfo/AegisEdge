@@ -130,25 +130,25 @@ HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
 
 #if defined(WITH_HAILO)
     // ---- HAILO ----
-    if (!vision_available_ || !configured_model_) return {0.0f, 0.0f, true};
+    if (!vision_available_ || !configured_model_) return {0.0f, 0.0f, true, 0.0f};
     preprocessFrame(cropped_frame);
 
     auto bindings_exp = configured_model_->create_bindings();
-    if (!bindings_exp) return {0.0f, 0.0f, true};
+    if (!bindings_exp) return {0.0f, 0.0f, true, 0.0f};
     auto bindings = bindings_exp.release();
 
     auto status = bindings.input()->set_buffer(
         hailort::MemoryView(input_buffer_.data(),
                             input_buffer_.size() * sizeof(float)));
-    if (status != HAILO_SUCCESS) return {0.0f, 0.0f, true};
+    if (status != HAILO_SUCCESS) return {0.0f, 0.0f, true, 0.0f};
 
     status = bindings.output()->set_buffer(
         hailort::MemoryView(output_buffer_.data(),
                             output_buffer_.size() * sizeof(float)));
-    if (status != HAILO_SUCCESS) return {0.0f, 0.0f, true};
+    if (status != HAILO_SUCCESS) return {0.0f, 0.0f, true, 0.0f};
 
     status = configured_model_->run(bindings, std::chrono::milliseconds(100));
-    if (status != HAILO_SUCCESS) return {0.0f, 0.0f, true};
+    if (status != HAILO_SUCCESS) return {0.0f, 0.0f, true, 0.0f};
 
     float sin_angle   = output_buffer_[0];
     float cos_angle   = output_buffer_[1];
@@ -157,7 +157,7 @@ HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
     float angle_deg = std::atan2f(sin_angle, cos_angle)
                     * (180.0f / static_cast<float>(M_PI));
     float offset_px = offset_norm * (cropped_frame.rows / 2.0f);
-    return {angle_deg, offset_px, false};
+    return {angle_deg, offset_px, false, 0.82f};
 
 #elif defined(WITH_HOUGH)
     // ---- HOUGH (escolhe a UNICA linha mais consistente com o prior) ----
@@ -178,7 +178,7 @@ HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
     cv::HoughLinesP(edges, lines, 1, CV_PI / 180.0,
                     threshold, min_length, max_gap);
 
-    if (lines.empty()) return {0.0f, 0.0f, true};
+    if (lines.empty()) return {0.0f, 0.0f, true, 0.0f};
 
     // Prior: o ROI ja esta centrado em torno do prior do Kalman, logo
     // o horizonte esperado esta proximo do meio do crop.
@@ -214,16 +214,18 @@ HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
     }
 
     if (best_score < 1.0f || best_length < min_length) {
-        return {0.0f, 0.0f, true};
+        return {0.0f, 0.0f, true, 0.0f};
     }
 
     float offset_from_crop_center = best_y - cropped_frame.rows * 0.5f;
-    return {best_angle, offset_from_crop_center, false};
+    // Scale confidence: higher score = higher confidence, capped at 0.90
+    float conf = std::min(0.90f, 0.55f + 0.001f * best_score);
+    return {best_angle, offset_from_crop_center, false, conf};
 
 #else
     // ---- IMU-ONLY: nao deveriamos sequer ser chamados ----
     (void)cropped_frame;
-    return {0.0f, 0.0f, true};
+    return {0.0f, 0.0f, true, 0.0f};
 #endif
 }
 
@@ -326,5 +328,8 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
         last_imu_ = imu;
     }
 
-    return { current_angle_, kalman_.offset_y, !got_vision };
+    // Confidence: IMU fallback gets lower confidence based on Kalman uncertainty
+    float imu_confidence = std::max(0.30f, 0.55f - 0.005f * kalman_.uncertainty_px());
+    float conf = got_vision ? 0.0f /* filled by callVision */ : imu_confidence;
+    return { current_angle_, kalman_.offset_y, !got_vision, conf };
 }

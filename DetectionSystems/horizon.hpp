@@ -44,6 +44,7 @@ struct HorizonLine {
     float angle;
     float offset;
     bool  is_estimated;
+    float confidence;  // 0.7-0.9 vision, 0.35-0.55 IMU, 0.0 failed
 };
 
 // ---------------------------------------------------------------------------
