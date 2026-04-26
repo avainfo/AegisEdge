@@ -161,7 +161,7 @@ HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
 
 #elif defined(WITH_HOUGH)
     // ---- HOUGH (escolhe a UNICA linha mais consistente com o prior) ----
-    if (cropped_frame.empty()) return {0.0f, 0.0f, true};
+    if (cropped_frame.empty()) return {0.0f, 0.0f, true, 0.0f};
 
     cv::Mat gray;
     cv::cvtColor(cropped_frame, gray, cv::COLOR_BGR2GRAY);
@@ -272,6 +272,8 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
 
     bool got_vision = false;
 
+    float final_confidence = 0.0f;
+
 #if HAS_VISION
     if (needs_vision && vision_available_) {
         float predicted_center_y = (cfg_.frame_height / 2.0f) + kalman_.offset_y;
@@ -299,6 +301,7 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
                 last_hailo_time_ = now;
                 initialized_     = true;
                 got_vision       = true;
+                final_confidence = vision_result.confidence;
             }
         }
     }
@@ -316,6 +319,11 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
         float imu_predicted_offset = imu.pitch * pixels_per_degree_;
         kalman_.update(imu_predicted_offset, kalman_.R_imu);
 
+        final_confidence = std::max(
+            0.30f,
+            0.55f - 0.005f * kalman_.uncertainty_px()
+        );
+
 #if !HAS_VISION
         // Em modo IMU-only marcamos initialized depois da primeira frame
         // para nao ficar preso na flag !initialized_
@@ -328,8 +336,5 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
         last_imu_ = imu;
     }
 
-    // Confidence: IMU fallback gets lower confidence based on Kalman uncertainty
-    float imu_confidence = std::max(0.30f, 0.55f - 0.005f * kalman_.uncertainty_px());
-    float conf = got_vision ? 0.0f /* filled by callVision */ : imu_confidence;
-    return { current_angle_, kalman_.offset_y, !got_vision, conf };
+    return { current_angle_, kalman_.offset_y, !got_vision, final_confidence };
 }

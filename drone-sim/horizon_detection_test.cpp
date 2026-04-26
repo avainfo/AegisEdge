@@ -31,6 +31,8 @@
 #include <cmath>
 #include <chrono>
 #include <string>
+#include <thread>
+#include <cstring>
 
 namespace fs = std::filesystem;
 
@@ -157,7 +159,9 @@ std::vector<NormalizedPoint> horizonToPoints(
 std::string toJson(const TelemetryEntry& tel,
                    const HorizonLine& h,
                    const std::vector<NormalizedPoint>& pts,
-                   bool detected) {
+                   bool detected,
+                   int image_width,
+                   int image_height) {
     std::ostringstream j;
     j << std::fixed << std::setprecision(4);
 
@@ -169,7 +173,7 @@ std::string toJson(const TelemetryEntry& tel,
     j << "\"pitch\":"    << tel.pitch    << ",";
     j << "\"yaw\":"      << tel.yaw      << ",";
     j << "\"altitude\":" << tel.altitude << ",";
-    j << "\"image\":{\"width\":1920,\"height\":1080},";
+    j << "\"image\":{\"width\":" << image_width << ",\"height\":" << image_height << "},";
     j << "\"horizon\":{";
 
     if (!detected) {
@@ -210,14 +214,19 @@ public:
         memset(&dest_, 0, sizeof(dest_));
         dest_.sin_family = AF_INET;
         dest_.sin_port   = htons(port);
-        inet_pton(AF_INET, ip.c_str(), &dest_.sin_addr);
+        if (inet_pton(AF_INET, ip.c_str(), &dest_.sin_addr) <= 0) {
+            return false;
+        }
         return true;
     }
 
     void send(const std::string& data) {
         if (sockfd_ < 0) return;
-        sendto(sockfd_, data.c_str(), data.size(), 0,
+        ssize_t sent = sendto(sockfd_, data.c_str(), data.size(), 0,
                (const struct sockaddr*)&dest_, sizeof(dest_));
+        if (sent < 0) {
+            std::cerr << "[UDP] Warning: failed to send packet.\n";
+        }
     }
 
 private:
@@ -266,8 +275,8 @@ bool parseUdpArg(const std::string& arg, std::string& ip, int& port) {
 // main()
 // ---------------------------------------------------------------------------
 int main(int argc, char* argv[]) {
-    std::string csv_path   = "../Assets/logs/airsim_telemetry_log.csv";
-    std::string frames_dir = "../Assets/images/images";
+    std::string csv_path   = "Assets/logs/airsim_telemetry_log.csv";
+    std::string frames_dir = "Assets/images/images";
     bool        show_window = true;
     std::string udp_target  = "";
     std::string jsonl_path  = "";
@@ -283,7 +292,7 @@ int main(int argc, char* argv[]) {
         } else if (arg == "--no-window") {
             show_window = false;
         } else if (arg[0] != '-') {
-            if (csv_path == "../Assets/logs/airsim_telemetry_log.csv")
+            if (csv_path == "Assets/logs/airsim_telemetry_log.csv")
                 csv_path = arg;
             else
                 frames_dir = arg;
@@ -379,11 +388,11 @@ int main(int argc, char* argv[]) {
         total_frames++;
         if (!result.is_estimated) hailo_calls++;
 
-        bool detected = !(result.confidence == 0.0f && result.is_estimated
-                          && result.angle == 0.0f && result.offset == 0.0f);
+        bool usable_horizon = result.confidence > 0.0f;
+        bool detected = usable_horizon;
 
         auto pts = horizonToPoints(result, W, H);
-        std::string json = toJson(tel, result, pts, detected);
+        std::string json = toJson(tel, result, pts, detected, W, H);
 
         // Write JSONL
         if (jsonl.is_open()) {

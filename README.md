@@ -53,18 +53,47 @@ flutter run -d linux
 python3 chaos-proxy/proxy.py
 
 # Terminal 2 — C++ Core
+cmake -S core -B core/build
+cmake --build core/build
 ./core/build/aegis_core
 
 # Terminal 3 — Detection test (WITH_HOUGH mode)
 mkdir -p build
 cmake -B build -DWITH_HOUGH=ON
 cmake --build build
-./build/horizon_detection_test --udp 127.0.0.1:5000
+./build/horizon_detection_test --udp 127.0.0.1:5000 --no-window
 
 # Terminal 4 — Flutter HUD
 cd aegis_edge_hud
 flutter run -d linux
 ```
+
+---
+
+## Quick Validation
+
+To quickly verify that the pipeline works from a fresh clone:
+
+```bash
+# 1. Build core
+cmake -S core -B core/build
+cmake --build core/build
+
+# 2. Build detection in Hough mode
+cmake -B build -DWITH_HOUGH=ON
+cmake --build build
+
+# 3. Generate JSONL without UDP to verify detection runs
+./build/horizon_detection_test --no-window --jsonl detected_horizon_output.jsonl
+
+# 4. Check JSONL exists
+ls -lh detected_horizon_output.jsonl
+
+# 5. Run fake telemetry path (tests chaos proxy + core)
+python3 tools/send_fake_telemetry.py
+```
+
+*Note: The Flutter HUD requires `cd aegis_edge_hud && flutter pub get && flutter run -d linux`. OpenCV is required for the detection build. Hailo mode requires hailort and is optional.*
 
 ---
 
