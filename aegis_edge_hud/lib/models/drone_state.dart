@@ -2,6 +2,8 @@ import 'horizon_data.dart';
 import 'link_state.dart';
 
 class DroneState {
+  final int frameId;
+  final int timestampMs;
   final LinkState linkState;
   final int latencyMs;
   final bool stale;
@@ -16,6 +18,8 @@ class DroneState {
   final HorizonData horizon;
 
   const DroneState({
+    required this.frameId,
+    required this.timestampMs,
     required this.linkState,
     required this.latencyMs,
     required this.stale,
@@ -31,6 +35,8 @@ class DroneState {
   });
 
   factory DroneState.initial() => DroneState(
+        frameId: 0,
+        timestampMs: 0,
         linkState: LinkState.lost,
         latencyMs: 0,
         stale: true,
@@ -47,6 +53,8 @@ class DroneState {
 
   factory DroneState.fromJson(Map<String, dynamic> json) {
     return DroneState(
+      frameId: (json['frame_id'] as num?)?.toInt() ?? 0,
+      timestampMs: (json['timestamp_ms'] as num?)?.toInt() ?? 0,
       linkState: LinkState.fromString(json['link_state'] as String? ?? 'LOST'),
       latencyMs: (json['latency_ms'] as num?)?.toInt() ?? 0,
       stale: json['stale'] as bool? ?? true,
