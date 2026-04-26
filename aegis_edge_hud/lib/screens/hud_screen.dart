@@ -12,6 +12,7 @@ import '../painters/tactical_bg_painter.dart';
 import '../services/hud_controller.dart';
 import '../theme/hud_theme.dart';
 import '../widgets/artificial_horizon_widget.dart';
+import '../widgets/hud_video_background.dart';
 import '../widgets/mini_map.dart';
 import '../widgets/stale_overlay.dart';
 import '../widgets/status_badge.dart';
@@ -42,6 +43,22 @@ class _HudScreenState extends State<HudScreen> {
           final isWide = constraints.maxWidth > 700;
           return Stack(
             children: [
+              // Layer 0: drone video background — never rebuilds on telemetry
+              const Positioned.fill(
+                child: RepaintBoundary(
+                  child: HudVideoBackground(),
+                ),
+              ),
+
+              // Layer 0b: dark scrim so HUD overlays stay readable
+              const Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Color(0x88000D1A), // ~53% opaque dark navy
+                  ),
+                ),
+              ),
+
               // Static — never rebuilds, isolated in its own layer
               const Positioned.fill(
                 child: RepaintBoundary(
