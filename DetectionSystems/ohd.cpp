@@ -156,30 +156,30 @@ void OptimizedHorizonDetector::preprocessFrame(const cv::Mat& src) {
 HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
 
 #if defined(WITH_HAILO)
-    if (!vision_available_ || !configured_model_) return {0.0f, 0.0f, true};
+    if (!vision_available_ || !configured_model_) return {0.0f, 0.0f, true, 0.0f};
     preprocessFrame(cropped_frame);
 
     // Criar bindings (cada inferencia tem o seu)
     auto bindings_exp = configured_model_->create_bindings();
-    if (!bindings_exp) return {0.0f, 0.0f, true};
+    if (!bindings_exp) return {0.0f, 0.0f, true, 0.0f};
     auto bindings = bindings_exp.release();
 
     // Apontar buffer de input
     auto in_status = bindings.input(input_name_)->set_buffer(
         hailort::MemoryView(input_buffer_.data(),
                             input_buffer_.size() * sizeof(float)));
-    if (in_status != HAILO_SUCCESS) return {0.0f, 0.0f, true};
+    if (in_status != HAILO_SUCCESS) return {0.0f, 0.0f, true, 0.0f};
 
     // Apontar buffer de output
     auto out_status = bindings.output(output_name_)->set_buffer(
         hailort::MemoryView(output_buffer_.data(),
                             output_buffer_.size() * sizeof(float)));
-    if (out_status != HAILO_SUCCESS) return {0.0f, 0.0f, true};
+    if (out_status != HAILO_SUCCESS) return {0.0f, 0.0f, true, 0.0f};
 
     // Executar inferencia (timeout 100ms)
     auto run_status = configured_model_->run(bindings,
                                              std::chrono::milliseconds(100));
-    if (run_status != HAILO_SUCCESS) return {0.0f, 0.0f, true};
+    if (run_status != HAILO_SUCCESS) return {0.0f, 0.0f, true, 0.0f};
 
     // Pos-processamento: [sin(angle), cos(angle), offset_norm]
     float sin_angle   = output_buffer_[0];
@@ -189,10 +189,10 @@ HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
     float angle_deg = std::atan2f(sin_angle, cos_angle)
                     * (180.0f / static_cast<float>(M_PI));
     float offset_px = offset_norm * (cropped_frame.rows / 2.0f);
-    return {angle_deg, offset_px, false};
+    return {angle_deg, offset_px, false, 0.82f};
 
 #elif defined(WITH_HOUGH)
-    if (cropped_frame.empty()) return {0.0f, 0.0f, true};
+    if (cropped_frame.empty()) return {0.0f, 0.0f, true, 0.0f};
 
     cv::Mat gray;
     cv::cvtColor(cropped_frame, gray, cv::COLOR_BGR2GRAY);
@@ -209,7 +209,7 @@ HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
     cv::HoughLinesP(edges, lines, 1, CV_PI / 180.0,
                     threshold, min_length, max_gap);
 
-    if (lines.empty()) return {0.0f, 0.0f, true};
+    if (lines.empty()) return {0.0f, 0.0f, true, 0.0f};
 
     float prior_y_in_crop = cropped_frame.rows * 0.5f;
     float sigma           = cropped_frame.rows * 0.3f;
@@ -243,15 +243,16 @@ HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
     }
 
     if (best_score < 1.0f || best_length < min_length) {
-        return {0.0f, 0.0f, true};
+        return {0.0f, 0.0f, true, 0.0f};
     }
 
     float offset_from_crop_center = best_y - cropped_frame.rows * 0.5f;
-    return {best_angle, offset_from_crop_center, false};
+    float conf = std::min(0.90f, 0.55f + 0.001f * best_score);
+    return {best_angle, offset_from_crop_center, false, conf};
 
 #else
     (void)cropped_frame;
-    return {0.0f, 0.0f, true};
+    return {0.0f, 0.0f, true, 0.0f};
 #endif
 }
 
@@ -293,6 +294,7 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
                      || (seconds_since_hailo >= cfg_.max_seconds_no_hailo);
 
     bool got_vision = false;
+    float final_confidence = 0.0f;
 
 #if HAS_VISION
     if (needs_vision && vision_available_) {
@@ -321,6 +323,7 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
                 last_hailo_time_ = now;
                 initialized_     = true;
                 got_vision       = true;
+                final_confidence = vision_result.confidence;
             }
         }
     }
@@ -337,6 +340,11 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
         float imu_predicted_offset = imu.pitch * pixels_per_degree_;
         kalman_.update(imu_predicted_offset, kalman_.R_imu);
 
+        final_confidence = std::max(
+            0.30f,
+            0.55f - 0.005f * kalman_.uncertainty_px()
+        );
+
 #if !HAS_VISION
         initialized_ = true;
 #endif
@@ -347,5 +355,5 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
         last_imu_ = imu;
     }
 
-    return { current_angle_, kalman_.offset_y, !got_vision };
+    return { current_angle_, kalman_.offset_y, !got_vision, final_confidence };
 }

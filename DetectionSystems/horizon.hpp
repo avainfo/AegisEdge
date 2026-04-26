@@ -36,6 +36,7 @@ struct HorizonLine {
     float angle;
     float offset;
     bool  is_estimated;
+    float confidence;
 };
 
 struct DetectorConfig {
