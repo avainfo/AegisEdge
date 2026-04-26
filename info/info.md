@@ -2,14 +2,6 @@
 
 This folder contains JSON templates for the horizon detection output.
 
-## Files
-
-- `json_awaited_hf.json`
-  Example when the horizon is detected.
-
-- `json_awaited_hnf.json`
-  Example when the horizon is not detected.
-
 ## JSON Structure
 
 Each file follows this structure:
@@ -18,6 +10,15 @@ Each file follows this structure:
 {
   "frame_id": 123,
   "timestamp_ms": 6334,
+  "drone_id": "DRONE_01",
+  "position": {
+    "x": 12.4,
+    "y": 8.7
+  },
+  "roll": 23.6,
+  "pitch": 8.8,
+  "yaw": 0.0,
+  "altitude": 42.5,
   "image": {
     "width": 1920,
     "height": 1080
@@ -25,34 +26,54 @@ Each file follows this structure:
   "horizon": {
     "detected": true,
     "type": "POLYLINE",
-    "points": [],
+    "points": [
+      { "x": 0.05, "y": 0.42 },
+      { "x": 0.50, "y": 0.41 },
+      { "x": 0.95, "y": 0.44 }
+    ],
     "ground_side": "BELOW",
-    "confidence": 0.76
+    "confidence": 0.76,
+    "estimated": false
   }
 }
-````
+```
 
-## Horizon Found
+## Horizon States
 
-When the horizon is detected:
+### 1. Horizon Found (Vision-confirmed)
+
+When the horizon is successfully detected via Hough or Hailo:
 
 ```json
 "horizon": {
   "detected": true,
   "type": "POLYLINE",
-  "points": [
-    { "x": 0.05, "y": 0.42 },
-    { "x": 0.50, "y": 0.41 },
-    { "x": 0.95, "y": 0.44 }
-  ],
+  "points": [...],
   "ground_side": "BELOW",
   "confidence": 0.76
 }
 ```
+*(Confidence usually ranges between 0.65 and 0.90. `estimated` field is omitted or false).*
 
-## Horizon Not Found
+### 2. Horizon Estimated (IMU Fallback)
 
-When no horizon is detected:
+When the vision gate fails or isn't called, the system falls back to IMU predictions:
+
+```json
+"horizon": {
+  "detected": true,
+  "type": "POLYLINE",
+  "points": [...],
+  "ground_side": "BELOW",
+  "confidence": 0.55,
+  "estimated": true
+}
+```
+*(Confidence is capped lower, typically around 0.55, to signal that this is an estimation).*
+
+### 3. Horizon Not Found
+
+When no horizon is detected and no valid IMU fallback is available:
 
 ```json
 "horizon": {
@@ -67,6 +88,5 @@ When no horizon is detected:
 ## Notes
 
 * `points` use normalized coordinates between `0.0` and `1.0`.
-* `confidence` is between `0.0` and `1.0`.
-* The backend must handle both detected and non-detected horizon cases.
-
+* `confidence` is clamped between `0.0` and `1.0`.
+* The `aegis_core` backend parses these values and enriches the packet with `link_state`, `stale`, and `latency_ms` properties before forwarding to the Flutter HUD.
