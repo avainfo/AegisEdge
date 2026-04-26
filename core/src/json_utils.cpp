@@ -12,6 +12,8 @@ ParseResult parseRawJson(const std::string& jsonString) {
         auto j = json::parse(jsonString);
 
         result.timestamp_ms = j.value("timestamp_ms", 0LL);
+        result.data.timestamp_ms = result.timestamp_ms;
+        result.data.frame_id = j.value("frame_id", 0LL);
         
         if (j.contains("position")) {
             result.data.posX = j["position"].value("x", 0.0);
@@ -61,6 +63,8 @@ std::string serializeEnrichedJson(const TelemetryProcessor& processor) {
     j["pitch"] = tel.pitch;
     j["yaw"] = tel.yaw;
     j["altitude"] = tel.altitude;
+    j["frame_id"] = tel.frame_id;
+    j["timestamp_ms"] = tel.timestamp_ms;
     
     json hz;
     hz["detected"] = tel.horizon.detected;
