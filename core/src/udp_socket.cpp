@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <arpa/inet.h>
 #include <cstring>
+#include <cerrno>
 
 UdpSocket::UdpSocket() {
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
