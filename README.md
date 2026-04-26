@@ -88,7 +88,7 @@ cmake --build build
 ls -lh detected_horizon_output.jsonl
 ```
 
-* Detection build requires OpenCV.
+* Detection build requires OpenCV (`sudo apt-get install libopencv-dev`).
 * Hailo mode is optional and requires hailort.
 * Default demo mode is WITH_HOUGH, not Hailo.
 
