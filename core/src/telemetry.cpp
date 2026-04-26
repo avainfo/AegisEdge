@@ -83,6 +83,11 @@ int64_t TelemetryProcessor::getLastUpdateMs() const {
     return lastPacketReceivedTimeMs;
 }
 
+int64_t TelemetryProcessor::getTimeSinceLastPacketMs() const {
+    if (lastPacketReceivedTimeMs == 0) return 0;
+    return getCurrentTimeMs() - lastPacketReceivedTimeMs;
+}
+
 const TelemetryData& TelemetryProcessor::getLastValidTelemetry() const {
     return lastValidTelemetry;
 }
