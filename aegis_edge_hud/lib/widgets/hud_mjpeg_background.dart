@@ -2,6 +2,11 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+import '../services/hud_controller.dart';
+import '../models/link_state.dart';
 import 'hud_video_background.dart';
 
 /// Background that fetches live frames from AirSim Python Bridge.
@@ -39,6 +44,13 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
 
   Future<void> _fetchFrame() async {
     if (_fetching) return;
+
+    if (!mounted) return;
+    final linkState = context.read<HudController>().state.linkState;
+    if (linkState == LinkState.lost) {
+      return; // Freeze the stream
+    }
+
     _fetching = true;
 
     try {
@@ -83,6 +95,9 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
 
   @override
   Widget build(BuildContext context) {
+    final linkState = context.select<HudController, LinkState>((c) => c.state.linkState);
+    final isLost = linkState == LinkState.lost;
+
     if (_isFailing) {
       // Fallback gracefully to the local MP4 background
       return const HudVideoBackground();
@@ -104,12 +119,45 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
       );
     }
 
+    Widget imageWidget = Image.memory(
+      _latestFrame!,
+      fit: BoxFit.cover,
+      gaplessPlayback: true,
+    );
+
+    if (isLost) {
+      const ColorFilter greyscale = ColorFilter.matrix(<double>[
+        0.2126, 0.7152, 0.0722, 0, 0,
+        0.2126, 0.7152, 0.0722, 0, 0,
+        0.2126, 0.7152, 0.0722, 0, 0,
+        0,      0,      0,      1, 0,
+      ]);
+
+      imageWidget = Stack(
+        fit: StackFit.expand,
+        children: [
+          ColorFiltered(
+            colorFilter: greyscale,
+            child: imageWidget,
+          ),
+          Container(color: Colors.black54),
+          Center(
+            child: Text(
+              'VIDEO SIGNAL LOST',
+              style: GoogleFonts.exo2(
+                color: Colors.redAccent,
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 8,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return SizedBox.expand(
-      child: Image.memory(
-        _latestFrame!,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-      ),
+      child: imageWidget,
     );
   }
 }
