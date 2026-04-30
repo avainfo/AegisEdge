@@ -170,11 +170,27 @@ int main() {
         output["horizon"]["points"] = points;
         output["horizon"]["confidence"] = result.confidence;
         output["horizon"]["estimated"] = result.is_estimated;
+        output["horizon"]["source"] = result.source;
         
         output["frame"]["available"] = true;
         output["frame"]["endpoint"] = "http://127.0.0.1:8080/snapshot";
         output["frame"]["mime"] = "image/png";
         output["frame"]["transport"] = "HTTP_SNAPSHOT_PROXY";
+
+        // Optional Debug Visualization
+        static bool debug_window = false; 
+        if (debug_window) {
+            cv::Mat debug_img = frame.clone();
+            cv::Point p1(0, height/2 + result.offset - (width/2) * std::tan(result.angle * M_PI / 180.0));
+            cv::Point p2(width, height/2 + result.offset + (width/2) * std::tan(result.angle * M_PI / 180.0));
+            cv::line(debug_img, p1, p2, cv::Scalar(0, 255, 0), 2);
+            
+            std::string text = result.source + " conf=" + std::to_string(result.confidence);
+            cv::putText(debug_img, text, cv::Point(20, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 0), 2);
+            
+            cv::imshow("AegisEdge Debug", debug_img);
+            if (cv::waitKey(1) == 'q') debug_window = false;
+        }
 
         std::string payload = output.dump();
         sendto(udp_sock, payload.c_str(), payload.size(), 0, (const struct sockaddr *)&servaddr, sizeof(servaddr));
@@ -186,10 +202,13 @@ int main() {
             double fps = frame_count * 1000.0 / elapsed_fps;
             std::cout << "[LIVE-HORIZON] mode=" << detector->visionModeName()
                       << " fps=" << std::fixed << std::setprecision(1) << fps 
-                      << " conf=" << result.confidence 
-                      << " est=" << (result.is_estimated ? "true" : "false")
-                      << " r=" << std::setprecision(1) << roll 
-                      << " p=" << std::setprecision(1) << pitch << std::endl;
+                      << " source=" << result.source
+                      << " angle=" << std::setprecision(1) << result.angle
+                      << " offset=" << std::setprecision(1) << result.offset
+                      << " conf=" << std::setprecision(2) << result.confidence 
+                      << " roll=" << std::setprecision(1) << roll 
+                      << " pitch=" << std::setprecision(1) << pitch 
+                      << " size=" << detector_width << "x" << detector_height << std::endl;
             frame_count = 0;
             last_fps_time = now;
         }

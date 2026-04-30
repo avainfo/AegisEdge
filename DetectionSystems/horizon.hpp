@@ -7,10 +7,10 @@
 #include <memory>
 
 // ---------------------------------------------------------------------------
-// Modos de compilacao:
-//   (sem flag)        -> IMU only
+// Build modes:
+//   (none)            -> IMU only
 //   -DWITH_HOUGH      -> IMU + Hough
-//   -DWITH_HAILO      -> IMU + Hailo (requer HailoRT instalado)
+//   -DWITH_HAILO      -> IMU + Hailo (requires HailoRT installed)
 // ---------------------------------------------------------------------------
 
 #ifdef WITH_HAILO
@@ -37,6 +37,7 @@ struct HorizonLine {
     float offset;
     bool  is_estimated;
     float confidence;
+    std::string source; // "IMU_ESTIMATED" or "VISION_HOUGH" or "VISION_HAILO"
 };
 
 struct DetectorConfig {
@@ -48,6 +49,10 @@ struct DetectorConfig {
     int   roi_height_base       = 256;
     float max_seconds_no_hailo  = 0.5f;
     int   roi_uncertainty_scale = 4;
+
+    // Hough Gating
+    float max_hough_angle_error_deg = 8.0f;
+    float max_hough_y_error_ratio   = 0.25f;
 
     int   model_input_w         = 224;
     int   model_input_h         = 224;
