@@ -196,7 +196,7 @@ class _TopBar extends StatelessWidget {
               Selector<HudController, DroneState>(
                 selector: (_, ctrl) => ctrl.state,
                 builder: (_, s, __) => Text(
-                  'FRAME #${s.frameId}   TS ${s.timestampMs}ms',
+                  'FRAME #${s.frameId}   TS ${s.timestampMs}ms   VIDEO ${s.videoState}',
                   style: GoogleFonts.exo2(
                     color: AegisColors.textDim.withOpacity(0.5),
                     fontSize: 8,

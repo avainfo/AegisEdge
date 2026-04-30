@@ -128,6 +128,12 @@ def airsim_loop():
                         "detected": True,
                         "confidence": 0.85,
                         "points": horizon_pts
+                    },
+                    "frame": {
+                        "available": True,
+                        "endpoint": "http://127.0.0.1:8080/snapshot",
+                        "mime": "image/png",
+                        "transport": "HTTP_SNAPSHOT"
                     }
                 }
                 latest_state_json = json.dumps(telemetry)

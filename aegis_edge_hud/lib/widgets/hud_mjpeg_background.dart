@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../services/hud_controller.dart';
+import '../models/drone_state.dart';
 import '../models/link_state.dart';
 import 'hud_video_background.dart';
 
@@ -40,21 +41,25 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
   void _scheduleNextFetch() {
     if (!mounted || _disposed) return;
     
-    final state = context.read<HudController>().state.linkState;
+    final droneState = context.read<HudController>().state;
     _timer?.cancel();
     
     Duration interval;
-    switch (state) {
-      case LinkState.normal:
+    switch (droneState.videoState) {
+      case "LIVE":
         interval = const Duration(milliseconds: 100);
         break;
-      case LinkState.degraded:
+      case "DEGRADED":
         interval = const Duration(milliseconds: 600);
         break;
-      case LinkState.lost:
+      case "FROZEN":
         interval = _latestFrame == null 
             ? const Duration(milliseconds: 300) 
-            : const Duration(seconds: 1);
+            : const Duration(milliseconds: 1000);
+        break;
+      case "UNAVAILABLE":
+      default:
+        interval = const Duration(milliseconds: 1000);
         break;
     }
 
@@ -64,9 +69,21 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
   Future<void> _fetchFrame() async {
     if (_fetching || !mounted || _disposed) return;
 
-    final state = context.read<HudController>().state.linkState;
+    final droneState = context.read<HudController>().state;
 
-    if (state == LinkState.lost && _latestFrame != null) {
+    // Design Decision:
+    // Image bytes are still transported over HTTP for demo simplicity, 
+    // but the permission to fetch, freeze, or degrade the visual feed 
+    // comes from Aegis Core after passing through the simulated connection.
+    
+    bool shouldAttemptFetch = droneState.videoShouldFetch;
+    
+    // Exception: If we have no frame yet, allow fetch even if frozen to get initial visual
+    if (droneState.videoShouldFreeze && _latestFrame == null) {
+      shouldAttemptFetch = true;
+    }
+
+    if (!shouldAttemptFetch) {
       _scheduleNextFetch();
       return;
     }
@@ -75,7 +92,7 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
 
     try {
       final response = await http
-          .get(Uri.parse('http://127.0.0.1:8080/snapshot'))
+          .get(Uri.parse(droneState.frameEndpoint))
           .timeout(const Duration(milliseconds: 500));
 
       if (response.statusCode == 200) {
@@ -117,12 +134,10 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
 
   @override
   Widget build(BuildContext context) {
-    final linkState = context.select<HudController, LinkState>((c) => c.state.linkState);
-    final isLost = linkState == LinkState.lost;
-    final isDegraded = linkState == LinkState.degraded;
+    final droneState = context.select<HudController, DroneState>((c) => c.state);
+    final videoState = droneState.videoState;
 
     if (_isFailing) {
-      // Fallback gracefully to the local MP4 background
       return const HudVideoBackground();
     }
 
@@ -148,7 +163,7 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
       gaplessPlayback: true,
     );
 
-    if (isDegraded) {
+    if (videoState == "DEGRADED") {
       imageWidget = Stack(
         fit: StackFit.expand,
         children: [
@@ -173,7 +188,7 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
           ),
         ],
       );
-    } else if (isLost) {
+    } else if (videoState == "FROZEN") {
       const ColorFilter greyscale = ColorFilter.matrix(<double>[
         0.2126, 0.7152, 0.0722, 0, 0,
         0.2126, 0.7152, 0.0722, 0, 0,
@@ -197,6 +212,24 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 8,
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (videoState == "UNAVAILABLE") {
+       imageWidget = Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(color: Colors.black),
+          Center(
+            child: Text(
+              'VIDEO UNAVAILABLE',
+              style: GoogleFonts.exo2(
+                color: Colors.white54,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 4,
               ),
             ),
           ),

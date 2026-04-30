@@ -93,6 +93,14 @@ class DemoService {
           HorizonPoint(x: 0.95, y: hy + tilt * 0.45),
         ],
       ),
+      frameAvailable: true,
+      frameEndpoint: "http://127.0.0.1:8080/snapshot",
+      frameMime: "image/png",
+      frameTransport: "HTTP_SNAPSHOT",
+      videoState: linkState == LinkState.normal ? "LIVE" : "DEGRADED",
+      videoStale: linkState != LinkState.normal,
+      videoShouldFetch: true,
+      videoShouldFreeze: false,
     );
   }
 
@@ -113,6 +121,14 @@ class DemoService {
       yaw: last.yaw,
       altitude: last.altitude,
       horizon: last.horizon,
+      frameAvailable: true,
+      frameEndpoint: last.frameEndpoint,
+      frameMime: last.frameMime,
+      frameTransport: last.frameTransport,
+      videoState: "FROZEN",
+      videoStale: true,
+      videoShouldFetch: false,
+      videoShouldFreeze: true,
     );
   }
 }
