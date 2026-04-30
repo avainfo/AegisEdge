@@ -59,8 +59,11 @@ struct DetectorConfig {
     float imu_roll_to_horizon_angle_sign = -1.0f;
 
     // Hough Gating
-    float max_hough_angle_error_deg = 8.0f;
-    float max_hough_y_error_ratio   = 0.25f;
+    float max_hough_angle_error_deg    = 8.0f;
+    float max_hough_y_error_ratio      = 0.25f;
+    float max_hough_offset_correction_px = 25.0f;
+    float min_hough_confidence         = 0.65f;
+    float min_sky_ground_contrast      = 8.0f;
 
     int   model_input_w         = 224;
     int   model_input_h         = 224;
@@ -140,6 +143,7 @@ private:
 #endif
 
     HorizonLine callVision(const cv::Mat& cropped_frame, float expected_angle);
+    float       computeSkyGroundContrast(const cv::Mat& gray, float mid_y, float angle_deg);
     void        preprocessFrame(const cv::Mat& src);
     int         adaptiveRoiHeight() const;
 };

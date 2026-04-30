@@ -153,6 +153,28 @@ void OptimizedHorizonDetector::preprocessFrame(const cv::Mat& src) {
 }
 
 // ===========================================================================
+float OptimizedHorizonDetector::computeSkyGroundContrast(const cv::Mat& gray, float mid_y, float angle_deg) {
+    if (gray.empty()) return 0.0f;
+
+    // Use two 20px wide bands above and below mid_y
+    int band_h = 20;
+    int margin = 5;
+    
+    int sky_y    = static_cast<int>(mid_y) - margin - band_h;
+    int ground_y = static_cast<int>(mid_y) + margin;
+    
+    if (sky_y < 0 || ground_y + band_h > gray.rows) return 0.0f;
+
+    cv::Rect sky_roi(gray.cols/4, sky_y, gray.cols/2, band_h);
+    cv::Rect ground_roi(gray.cols/4, ground_y, gray.cols/2, band_h);
+
+    float sky_mean = cv::mean(gray(sky_roi))[0];
+    float ground_mean = cv::mean(gray(ground_roi))[0];
+
+    return sky_mean - ground_mean;
+}
+
+// ===========================================================================
 HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame, float expected_angle) {
 
 #if defined(WITH_HAILO)
@@ -255,9 +277,16 @@ HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame, f
         return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED", expected_angle, 0.0f};
     }
 
+    // Sky/Ground Contrast Check
+    float contrast = computeSkyGroundContrast(gray, best_y, best_angle);
+    float contrast_penalty = 1.0f;
+    if (contrast < 0) contrast_penalty = 0.2f; // Ground brighter than sky? High suspicion
+    else if (contrast < cfg_.min_sky_ground_contrast) contrast_penalty = 0.6f;
+
     float offset_from_crop_center = best_y - cropped_frame.rows * 0.5f;
-    float conf = std::min(0.95f, 0.40f + 0.002f * best_score);
+    float conf = std::min(0.95f, (0.40f + 0.002f * best_score) * contrast_penalty);
     float angle_err = std::abs(best_angle - expected_angle);
+    
     return {best_angle, offset_from_crop_center, false, conf, "VISION_HOUGH", expected_angle, angle_err};
 
 #else
@@ -310,6 +339,9 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
     float expected_angle = cfg_.imu_roll_to_horizon_angle_sign * imu.roll;
     float final_angle_error = 0.0f;
 
+    static int log_throttle = 0;
+    log_throttle++;
+
 #if HAS_VISION
     if (needs_vision && vision_available_) {
         float predicted_center_y = (cfg_.frame_height / 2.0f) + kalman_.offset_y;
@@ -328,10 +360,21 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
             float absolute_offset = (crop_center_y - image_center_y)
                                   + vision_result.offset;
 
-            float disagreement   = std::abs(absolute_offset - kalman_.offset_y);
+            float correction = std::abs(absolute_offset - kalman_.offset_y);
             float gate_threshold = 2.0f * kalman_.uncertainty_px() + 20.0f;
 
-            if (!initialized_ || disagreement < gate_threshold) {
+            bool reject = false;
+            std::string reason = "";
+
+            if (correction > cfg_.max_hough_offset_correction_px && initialized_) {
+                reject = true; reason = "correction too large (" + std::to_string(correction) + ")";
+            } else if (vision_result.confidence < cfg_.min_hough_confidence) {
+                reject = true; reason = "low confidence (" + std::to_string(vision_result.confidence) + ")";
+            } else if (initialized_ && correction > gate_threshold) {
+                reject = true; reason = "gating rejection";
+            }
+
+            if (!reject) {
                 kalman_.update(absolute_offset, kalman_.R_hailo);
                 current_angle_   = vision_result.angle;
                 last_hailo_time_ = now;
@@ -340,6 +383,10 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
                 final_confidence = vision_result.confidence;
                 current_source   = vision_result.source;
                 final_angle_error = vision_result.angle_error;
+            } else {
+                if (log_throttle % 60 == 0) {
+                    std::cout << "[HORIZON] Reject Hough: " << reason << std::endl;
+                }
             }
         }
     }
