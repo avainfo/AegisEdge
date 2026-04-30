@@ -12,7 +12,7 @@ def main():
         print(f"[DRONE] Connection failed: {e}")
         sys.exit(1)
 
-    signal.signal(signal.SIGINT, signal_handler)
+
 
     def signal_handler(sig, frame):
         print("\n[DRONE] Interrupt received. Landing safely...")
