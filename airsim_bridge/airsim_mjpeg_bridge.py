@@ -3,6 +3,7 @@ import json
 import socket
 import threading
 import math
+import argparse
 from flask import Flask, Response
 
 try:
@@ -14,20 +15,20 @@ except ImportError:
 
 app = Flask(__name__)
 
-# Global variables for the latest frame and state
 latest_frame = None
 latest_state_json = None
+latest_telemetry = {}
+frames_only = False
 frame_id = 0
 frame_lock = threading.Lock()
 
 UDP_IP = "127.0.0.1"
-UDP_PORT = 5000  # Target port (proxy or core)
+UDP_PORT = 5000
 TARGET_FPS = 15
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 def to_euler(q):
-    """Convert AirSim quaternion to roll, pitch, yaw in degrees"""
     w, x, y, z = q.w_val, q.x_val, q.y_val, q.z_val
     t0 = +2.0 * (w * x + y * z)
     t1 = +1.0 - 2.0 * (x * x + y * y)
@@ -45,9 +46,6 @@ def to_euler(q):
     return roll, pitch, yaw
 
 def generate_fake_horizon(roll, pitch):
-    """Generate fake horizon points between 0.0 and 1.0 based on drone attitude"""
-    # Simply keep points at y=0.5 but adjust based on pitch/roll
-    # This is a very rough simulation just for hackathon demo
     pitch_offset = -pitch / 90.0 * 0.5 
     roll_rad = math.radians(roll)
     
@@ -87,7 +85,6 @@ def airsim_loop():
         start_time = time.time()
         
         try:
-            # Get Image
             responses = client.simGetImages([
                 airsim.ImageRequest("0", airsim.ImageType.Scene, False, True)
             ])
@@ -97,15 +94,13 @@ def airsim_loop():
                     print("Warning: AirSim returned empty image_data_uint8")
             else:
                 frame_data = None
-                print("Warning: AirSim returned no response for simGetImages")
                 
-            # Get Kinematics
             state = client.getMultirotorState()
             pos = state.kinematics_estimated.position
             ori = state.kinematics_estimated.orientation
             
             roll, pitch, yaw = to_euler(ori)
-            altitude = -pos.z_val # NED to altitude
+            altitude = -pos.z_val
             
             with frame_lock:
                 frame_id += 1
@@ -138,12 +133,13 @@ def airsim_loop():
                     }
                 }
                 latest_state_json = json.dumps(telemetry)
+                latest_telemetry = telemetry
                 
-            # Send UDP Telemetry
-            try:
-                sock.sendto(latest_state_json.encode('utf-8'), (UDP_IP, UDP_PORT))
-            except Exception as e:
-                print(f"Warning: UDP send failed: {e}")
+            if not frames_only:
+                try:
+                    sock.sendto(latest_state_json.encode('utf-8'), (UDP_IP, UDP_PORT))
+                except Exception as e:
+                    print(f"Warning: UDP send failed: {e}")
                 
             if frame_id % 30 == 0:
                 print(f"[FRAME] id={frame_id} bytes={len(frame_data) if frame_data else 0} ts={timestamp_ms}")
@@ -166,8 +162,6 @@ def generate_mjpeg():
             yield (b'--frame\r\n'
                    b'Content-Type: image/png\r\n\r\n' + frame + b'\r\n')
         
-        time.sleep(1.0 / TARGET_FPS)
-
 @app.route('/video')
 def video_feed():
     return Response(generate_mjpeg(), mimetype='multipart/x-mixed-replace; boundary=frame')
@@ -180,7 +174,20 @@ def snapshot():
         return "No valid frame yet", 404
     return Response(frame, mimetype='image/png')
 
+@app.route('/telemetry')
+def get_telemetry():
+    with frame_lock:
+        return Response(json.dumps(latest_telemetry), mimetype='application/json')
+
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--frames-only", action="store_true", help="Only serve frames/telemetry via HTTP, do not send UDP")
+    args = parser.parse_args()
+    
+    frames_only = args.frames_only
+    if frames_only:
+        print("Running in --frames-only mode. UDP telemetry disabled.")
+
     t = threading.Thread(target=airsim_loop, daemon=True)
     t.start()
     
