@@ -57,6 +57,7 @@ struct DetectorConfig {
     // IMU conversion
     // If the horizon angle moves opposite to the visual roll, switch this from -1.0f to +1.0f.
     float imu_roll_to_horizon_angle_sign = -1.0f;
+    float imu_angle_smoothing_alpha      = 0.25f;
 
     // Hough Gating
     float max_hough_angle_error_deg    = 8.0f;

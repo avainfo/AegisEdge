@@ -397,8 +397,8 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
 #endif
 
     if (!got_vision) {
-        float roll_diff = imu.roll - prev_imu.roll;
-        current_angle_ -= roll_diff;
+        current_angle_ = (1.0f - cfg_.imu_angle_smoothing_alpha) * current_angle_
+                       + cfg_.imu_angle_smoothing_alpha * expected_angle;
 
         float imu_predicted_offset = imu.pitch * pixels_per_degree_;
         kalman_.update(imu_predicted_offset, kalman_.R_imu);
