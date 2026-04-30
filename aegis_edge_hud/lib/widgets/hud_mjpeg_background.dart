@@ -29,26 +29,46 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
   bool _isFailing = false;
   int _consecutiveFailures = 0;
   bool _fetching = false;
+  bool _disposed = false;
 
   @override
   void initState() {
     super.initState();
-    _startPolling();
+    _scheduleNextFetch();
   }
 
-  void _startPolling() {
-    _timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      _fetchFrame();
-    });
+  void _scheduleNextFetch() {
+    if (!mounted || _disposed) return;
+    
+    final state = context.read<HudController>().state.linkState;
+    _timer?.cancel();
+    
+    Duration interval;
+    switch (state) {
+      case LinkState.normal:
+        interval = const Duration(milliseconds: 100);
+        break;
+      case LinkState.degraded:
+        interval = const Duration(milliseconds: 600);
+        break;
+      case LinkState.lost:
+        interval = _latestFrame == null 
+            ? const Duration(milliseconds: 300) 
+            : const Duration(seconds: 1);
+        break;
+    }
+
+    _timer = Timer(interval, _fetchFrame);
   }
 
   Future<void> _fetchFrame() async {
-    if (_fetching) return;
+    if (_fetching || !mounted || _disposed) return;
 
-    if (!mounted) return;
-    final linkState = context.read<HudController>().state.linkState;
-    if (linkState == LinkState.lost) {
-      return; // Freeze the stream
+    final state = context.read<HudController>().state.linkState;
+
+    if (state == LinkState.lost && _latestFrame != null) {
+      _scheduleNextFetch();
+      return;
     }
 
     _fetching = true;
@@ -56,7 +76,7 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
     try {
       final response = await http
           .get(Uri.parse('http://127.0.0.1:8080/snapshot'))
-          .timeout(const Duration(milliseconds: 200));
+          .timeout(const Duration(milliseconds: 500));
 
       if (response.statusCode == 200) {
         if (mounted) {
@@ -73,12 +93,13 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
       _handleFailure();
     } finally {
       _fetching = false;
+      _scheduleNextFetch();
     }
   }
 
   void _handleFailure() {
     _consecutiveFailures++;
-    if (_consecutiveFailures > 10 && !_isFailing) {
+    if (_consecutiveFailures > 15 && !_isFailing) {
       if (mounted) {
         setState(() {
           _isFailing = true;
@@ -89,6 +110,7 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
 
   @override
   void dispose() {
+    _disposed = true;
     _timer?.cancel();
     super.dispose();
   }
@@ -97,6 +119,7 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
   Widget build(BuildContext context) {
     final linkState = context.select<HudController, LinkState>((c) => c.state.linkState);
     final isLost = linkState == LinkState.lost;
+    final isDegraded = linkState == LinkState.degraded;
 
     if (_isFailing) {
       // Fallback gracefully to the local MP4 background
@@ -125,7 +148,32 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
       gaplessPlayback: true,
     );
 
-    if (isLost) {
+    if (isDegraded) {
+      imageWidget = Stack(
+        fit: StackFit.expand,
+        children: [
+          imageWidget,
+          Container(color: Colors.amber.withOpacity(0.15)),
+          Positioned(
+            top: 100,
+            left: 40,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              color: Colors.black54,
+              child: Text(
+                'VIDEO DEGRADED',
+                style: GoogleFonts.exo2(
+                  color: Colors.amberAccent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.5,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (isLost) {
       const ColorFilter greyscale = ColorFilter.matrix(<double>[
         0.2126, 0.7152, 0.0722, 0, 0,
         0.2126, 0.7152, 0.0722, 0, 0,
