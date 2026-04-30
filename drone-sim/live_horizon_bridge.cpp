@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <opencv2/opencv.hpp>
 #include <nlohmann/json.hpp>
 #include "../DetectionSystems/horizon.hpp"
@@ -64,10 +65,9 @@ int main() {
     servaddr.sin_port = htons(5000);
     servaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-    OptimizedHorizonDetector detector;
-    if (!detector.init("model.hef")) {
-        std::cerr << "[LIVE-HORIZON] Detector init failed, continuing with fallback if available" << std::endl;
-    }
+    std::unique_ptr<OptimizedHorizonDetector> detector;
+    int detector_width = 0;
+    int detector_height = 0;
     
     auto last_fps_time = std::chrono::steady_clock::now();
     int frame_count = 0;
@@ -95,11 +95,6 @@ int main() {
         double roll = tel_json.value("roll", 0.0);
         double pitch = tel_json.value("pitch", 0.0);
         
-        ImuData imu;
-        imu.roll = roll;
-        imu.pitch = pitch;
-        detector.updateImu(imu);
-
         std::string img_data = simpleHttpGet("127.0.0.1", 8081, "/snapshot");
         if (img_data.empty()) {
             error_count++;
@@ -109,12 +104,36 @@ int main() {
 
         std::vector<uchar> bytes(img_data.begin(), img_data.end());
         cv::Mat frame = cv::imdecode(bytes, cv::IMREAD_COLOR);
-        if (frame.empty()) {
+        if (frame.empty() || frame.cols == 0 || frame.rows == 0) {
             error_count++;
             continue;
         }
 
-        HorizonLine result = detector.process(frame);
+        if (!detector || detector_width != frame.cols || detector_height != frame.rows) {
+            DetectorConfig cfg;
+            cfg.frame_width = frame.cols;
+            cfg.frame_height = frame.rows;
+            cfg.v_fov_degrees = 90.0f;
+            cfg.max_seconds_no_hailo = 0.5f;
+
+            detector = std::make_unique<OptimizedHorizonDetector>(cfg);
+            detector_width = frame.cols;
+            detector_height = frame.rows;
+
+            std::cout << "[LIVE-HORIZON] Initializing detector for frame size "
+                      << detector_width << "x" << detector_height << std::endl;
+
+            if (!detector->init("model.hef")) {
+                std::cerr << "[LIVE-HORIZON] Detector init failed, continuing with fallback if available" << std::endl;
+            }
+        }
+
+        ImuData imu;
+        imu.roll = roll;
+        imu.pitch = pitch;
+        detector->updateImu(imu);
+
+        HorizonLine result = detector->process(frame);
 
         double width = frame.cols;
         double height = frame.rows;
@@ -165,7 +184,7 @@ int main() {
         auto elapsed_fps = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_fps_time).count();
         if (elapsed_fps >= 2000) {
             double fps = frame_count * 1000.0 / elapsed_fps;
-            std::cout << "[LIVE-HORIZON] mode=" << detector.visionModeName()
+            std::cout << "[LIVE-HORIZON] mode=" << detector->visionModeName()
                       << " fps=" << std::fixed << std::setprecision(1) << fps 
                       << " conf=" << result.confidence 
                       << " est=" << (result.is_estimated ? "true" : "false")
