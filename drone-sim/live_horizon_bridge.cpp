@@ -85,8 +85,11 @@ int main() {
                 tel_json = json::parse(tel_data);
                 telemetry_valid = true;
             } catch (...) {
+                error_count++;
                 if (error_count % 100 == 0) std::cerr << "[LIVE-HORIZON] Telemetry JSON parse failed" << std::endl;
             }
+        } else {
+            error_count++;
         }
 
         double roll = tel_json.value("roll", 0.0);
@@ -151,6 +154,7 @@ int main() {
         
         output["frame"]["available"] = true;
         output["frame"]["endpoint"] = "http://127.0.0.1:8080/snapshot";
+        output["frame"]["mime"] = "image/png";
         output["frame"]["transport"] = "HTTP_SNAPSHOT_PROXY";
 
         std::string payload = output.dump();
@@ -175,8 +179,6 @@ int main() {
         auto process_time = std::chrono::duration_cast<std::chrono::milliseconds>(frame_end - frame_start).count();
         int sleep_ms = std::max(0, 50 - (int)process_time);
         std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
-        
-        error_count++;
     }
 
     close(udp_sock);
