@@ -72,9 +72,9 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
     final droneState = context.read<HudController>().state;
 
     // Design Decision:
-    // Image bytes are still transported over HTTP for demo simplicity, 
-    // but the permission to fetch, freeze, or degrade the visual feed 
-    // comes from Aegis Core after passing through the simulated connection.
+    // Image bytes are transported over HTTP through the Chaos Proxy to simulate 
+    // real-world connection constraints (latency, packet loss, cut links).
+    // The permission to fetch or freeze still comes from Aegis Core metadata.
     
     bool shouldAttemptFetch = droneState.videoShouldFetch;
     
@@ -93,7 +93,7 @@ class _HudMjpegBackgroundState extends State<HudMjpegBackground> {
     try {
       final response = await http
           .get(Uri.parse(droneState.frameEndpoint))
-          .timeout(const Duration(milliseconds: 500));
+          .timeout(const Duration(milliseconds: 1000));
 
       if (response.statusCode == 200) {
         if (mounted) {

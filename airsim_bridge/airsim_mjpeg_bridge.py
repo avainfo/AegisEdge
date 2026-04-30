@@ -109,7 +109,8 @@ def airsim_loop():
             
             with frame_lock:
                 frame_id += 1
-                if frame_data is not None:
+                frame_available = frame_data is not None and len(frame_data) > 0
+                if frame_available:
                     latest_frame = frame_data
                 
                 timestamp_ms = int(time.time() * 1000)
@@ -130,10 +131,10 @@ def airsim_loop():
                         "points": horizon_pts
                     },
                     "frame": {
-                        "available": True,
+                        "available": frame_available,
                         "endpoint": "http://127.0.0.1:8080/snapshot",
                         "mime": "image/png",
-                        "transport": "HTTP_SNAPSHOT"
+                        "transport": "HTTP_SNAPSHOT_PROXY"
                     }
                 }
                 latest_state_json = json.dumps(telemetry)
@@ -183,5 +184,5 @@ if __name__ == '__main__':
     t = threading.Thread(target=airsim_loop, daemon=True)
     t.start()
     
-    print("Starting MJPEG bridge on http://0.0.0.0:8080/video")
-    app.run(host='0.0.0.0', port=8080, threaded=True)
+    print("Starting Internal MJPEG bridge on http://0.0.0.0:8081/snapshot")
+    app.run(host='0.0.0.0', port=8081, threaded=True)
