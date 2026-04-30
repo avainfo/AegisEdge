@@ -12,7 +12,7 @@ import '../painters/tactical_bg_painter.dart';
 import '../services/hud_controller.dart';
 import '../theme/hud_theme.dart';
 import '../widgets/artificial_horizon_widget.dart';
-import '../widgets/hud_video_background.dart';
+import '../widgets/hud_mjpeg_background.dart';
 import '../widgets/mini_map.dart';
 import '../widgets/stale_overlay.dart';
 import '../widgets/status_badge.dart';
@@ -43,10 +43,10 @@ class _HudScreenState extends State<HudScreen> {
           final isWide = constraints.maxWidth > 700;
           return Stack(
             children: [
-              // Layer 0: drone video background — never rebuilds on telemetry
+              // Layer 0: drone video background — live MJPEG with MP4 fallback
               const Positioned.fill(
                 child: RepaintBoundary(
-                  child: HudVideoBackground(),
+                  child: HudMjpegBackground(),
                 ),
               ),
 
@@ -190,6 +190,18 @@ class _TopBar extends StatelessWidget {
                   color: AegisColors.textDim,
                   fontSize: 9,
                   letterSpacing: 2.5,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Selector<HudController, DroneState>(
+                selector: (_, ctrl) => ctrl.state,
+                builder: (_, s, __) => Text(
+                  'FRAME #${s.frameId}   TS ${s.timestampMs}ms   VIDEO ${s.videoState}',
+                  style: GoogleFonts.exo2(
+                    color: AegisColors.textDim.withOpacity(0.5),
+                    fontSize: 8,
+                    letterSpacing: 1.5,
+                  ),
                 ),
               ),
             ],

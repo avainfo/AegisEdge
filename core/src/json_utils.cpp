@@ -12,6 +12,8 @@ ParseResult parseRawJson(const std::string& jsonString) {
         auto j = json::parse(jsonString);
 
         result.timestamp_ms = j.value("timestamp_ms", 0LL);
+        result.data.timestamp_ms = result.timestamp_ms;
+        result.data.frame_id = j.value("frame_id", 0LL);
         
         if (j.contains("position")) {
             result.data.posX = j["position"].value("x", 0.0);
@@ -37,6 +39,14 @@ ParseResult parseRawJson(const std::string& jsonString) {
                 }
             }
         }
+
+        if (j.contains("frame")) {
+            auto f = j["frame"];
+            result.data.frame_available = f.value("available", false);
+            result.data.frame_endpoint = f.value("endpoint", "http://127.0.0.1:8080/snapshot");
+            result.data.frame_mime = f.value("mime", "image/png");
+            result.data.frame_transport = f.value("transport", "HTTP_SNAPSHOT");
+        }
         
         result.success = true;
     } catch (const std::exception& e) {
@@ -48,9 +58,10 @@ ParseResult parseRawJson(const std::string& jsonString) {
 
 std::string serializeEnrichedJson(const TelemetryProcessor& processor) {
     const auto& tel = processor.getLastValidTelemetry();
+    LinkState ls = processor.getLinkState();
     
     json j;
-    j["link_state"] = LinkStateToString(processor.getLinkState());
+    j["link_state"] = LinkStateToString(ls);
     j["latency_ms"] = processor.getLatency();
     j["stale"] = processor.isStale();
     j["source_valid"] = processor.isSourceValid();
@@ -61,6 +72,8 @@ std::string serializeEnrichedJson(const TelemetryProcessor& processor) {
     j["pitch"] = tel.pitch;
     j["yaw"] = tel.yaw;
     j["altitude"] = tel.altitude;
+    j["frame_id"] = tel.frame_id;
+    j["timestamp_ms"] = tel.timestamp_ms;
     
     json hz;
     hz["detected"] = tel.horizon.detected;
@@ -71,8 +84,41 @@ std::string serializeEnrichedJson(const TelemetryProcessor& processor) {
         points.push_back({{"x", p.x}, {"y", p.y}});
     }
     hz["points"] = points;
-    
     j["horizon"] = hz;
+
+    // Video State Decision Logic
+    std::string video_state = "UNAVAILABLE";
+    bool video_stale = true;
+    bool video_should_fetch = false;
+    bool video_should_freeze = false;
+
+    if (tel.frame_available) {
+        if (ls == LinkState::NORMAL) {
+            video_state = "LIVE";
+            video_stale = false;
+            video_should_fetch = true;
+            video_should_freeze = false;
+        } else if (ls == LinkState::DEGRADED) {
+            video_state = "DEGRADED";
+            video_stale = true;
+            video_should_fetch = true;
+            video_should_freeze = false;
+        } else if (ls == LinkState::LOST) {
+            video_state = "FROZEN";
+            video_stale = true;
+            video_should_fetch = false;
+            video_should_freeze = true;
+        }
+    }
+
+    j["frame_available"] = tel.frame_available;
+    j["frame_endpoint"] = tel.frame_endpoint;
+    j["frame_mime"] = tel.frame_mime;
+    j["frame_transport"] = tel.frame_transport;
+    j["video_state"] = video_state;
+    j["video_stale"] = video_stale;
+    j["video_should_fetch"] = video_should_fetch;
+    j["video_should_freeze"] = video_should_freeze;
     
     return j.dump();
 }

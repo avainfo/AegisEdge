@@ -13,6 +13,7 @@ class DemoService {
   final _controller = StreamController<DroneState>.broadcast();
   Timer? _timer;
   int _elapsedMs = 0;
+  int _frameIdCounter = 0;
   DroneState? _lastGoodState;
 
   Stream<DroneState> get stream => _controller.stream;
@@ -68,6 +69,8 @@ class DemoService {
     final tilt = roll * 0.004;
 
     return DroneState(
+      frameId: ++_frameIdCounter,
+      timestampMs: DateTime.now().millisecondsSinceEpoch,
       linkState: linkState,
       latencyMs: latencyMs,
       stale: stale,
@@ -90,12 +93,22 @@ class DemoService {
           HorizonPoint(x: 0.95, y: hy + tilt * 0.45),
         ],
       ),
+      frameAvailable: true,
+      frameEndpoint: "http://127.0.0.1:8080/snapshot",
+      frameMime: "image/png",
+      frameTransport: "HTTP_SNAPSHOT",
+      videoState: linkState == LinkState.normal ? "LIVE" : "DEGRADED",
+      videoStale: linkState != LinkState.normal,
+      videoShouldFetch: true,
+      videoShouldFreeze: false,
     );
   }
 
   DroneState _makeLost(DroneState? last) {
     if (last == null) return DroneState.initial();
     return DroneState(
+      frameId: last.frameId,
+      timestampMs: last.timestampMs,
       linkState: LinkState.lost,
       latencyMs: last.latencyMs,
       stale: true,
@@ -108,6 +121,14 @@ class DemoService {
       yaw: last.yaw,
       altitude: last.altitude,
       horizon: last.horizon,
+      frameAvailable: true,
+      frameEndpoint: last.frameEndpoint,
+      frameMime: last.frameMime,
+      frameTransport: last.frameTransport,
+      videoState: "FROZEN",
+      videoStale: true,
+      videoShouldFetch: false,
+      videoShouldFreeze: true,
     );
   }
 }

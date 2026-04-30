@@ -16,6 +16,8 @@ struct HorizonData {
 };
 
 struct TelemetryData {
+    int64_t frame_id = 0;
+    int64_t timestamp_ms = 0;
     double posX = 0.0;
     double posY = 0.0;
     double roll = 0.0;
@@ -23,6 +25,12 @@ struct TelemetryData {
     double yaw = 0.0;
     double altitude = 0.0;
     HorizonData horizon;
+
+    // Frame metadata
+    bool frame_available = false;
+    std::string frame_endpoint = "http://127.0.0.1:8080/snapshot";
+    std::string frame_mime = "image/png";
+    std::string frame_transport = "HTTP_SNAPSHOT";
 };
 
 class TelemetryProcessor {
