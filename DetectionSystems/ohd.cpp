@@ -153,29 +153,31 @@ void OptimizedHorizonDetector::preprocessFrame(const cv::Mat& src) {
 }
 
 // ===========================================================================
-HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
+HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame, float expected_angle) {
 
 #if defined(WITH_HAILO)
-    if (!vision_available_ || !configured_model_) return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED"};
+    if (!vision_available_ || !configured_model_) 
+        return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED", expected_angle, 0.0f};
+    
     preprocessFrame(cropped_frame);
 
     auto bindings_exp = configured_model_->create_bindings();
-    if (!bindings_exp) return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED"};
+    if (!bindings_exp) return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED", expected_angle, 0.0f};
     auto bindings = bindings_exp.release();
 
     auto in_status = bindings.input(input_name_)->set_buffer(
         hailort::MemoryView(input_buffer_.data(),
                             input_buffer_.size() * sizeof(float)));
-    if (in_status != HAILO_SUCCESS) return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED"};
+    if (in_status != HAILO_SUCCESS) return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED", expected_angle, 0.0f};
 
     auto out_status = bindings.output(output_name_)->set_buffer(
         hailort::MemoryView(output_buffer_.data(),
                             output_buffer_.size() * sizeof(float)));
-    if (out_status != HAILO_SUCCESS) return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED"};
+    if (out_status != HAILO_SUCCESS) return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED", expected_angle, 0.0f};
 
     auto run_status = configured_model_->run(bindings,
                                              std::chrono::milliseconds(100));
-    if (run_status != HAILO_SUCCESS) return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED"};
+    if (run_status != HAILO_SUCCESS) return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED", expected_angle, 0.0f};
 
     float sin_angle   = output_buffer_[0];
     float cos_angle   = output_buffer_[1];
@@ -184,10 +186,10 @@ HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
     float angle_deg = std::atan2f(sin_angle, cos_angle)
                     * (180.0f / static_cast<float>(M_PI));
     float offset_px = offset_norm * (cropped_frame.rows / 2.0f);
-    return {angle_deg, offset_px, false, 0.82f, "VISION_HAILO"};
+    return {angle_deg, offset_px, false, 0.82f, "VISION_HAILO", expected_angle, 0.0f};
 
 #elif defined(WITH_HOUGH)
-    if (cropped_frame.empty()) return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED"};
+    if (cropped_frame.empty()) return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED", expected_angle, 0.0f};
 
     cv::Mat gray;
     cv::cvtColor(cropped_frame, gray, cv::COLOR_BGR2GRAY);
@@ -204,10 +206,9 @@ HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
     cv::HoughLinesP(edges, lines, 1, CV_PI / 180.0,
                     threshold, min_length, max_gap);
 
-    if (lines.empty()) return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED"};
+    if (lines.empty()) return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED", expected_angle, 0.0f};
 
     // Priors for gating
-    float expected_angle = current_angle_;
     float prior_y_in_crop = cropped_frame.rows * 0.5f;
     
     float sigma_y     = cropped_frame.rows * 0.25f;
@@ -251,16 +252,18 @@ HorizonLine OptimizedHorizonDetector::callVision(const cv::Mat& cropped_frame) {
     }
 
     if (best_score < 10.0f || best_length < min_length) {
-        return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED"};
+        return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED", expected_angle, 0.0f};
     }
 
     float offset_from_crop_center = best_y - cropped_frame.rows * 0.5f;
     float conf = std::min(0.95f, 0.40f + 0.002f * best_score);
-    return {best_angle, offset_from_crop_center, false, conf, "VISION_HOUGH"};
+    float angle_err = std::abs(best_angle - expected_angle);
+    return {best_angle, offset_from_crop_center, false, conf, "VISION_HOUGH", expected_angle, angle_err};
 
 #else
     (void)cropped_frame;
-    return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED"};
+    (void)expected_angle;
+    return {0.0f, 0.0f, true, 0.0f, "IMU_ESTIMATED", 0.0f, 0.0f};
 #endif
 }
 
@@ -304,6 +307,8 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
     bool got_vision = false;
     std::string current_source = "IMU_ESTIMATED";
     float final_confidence = 0.0f;
+    float expected_angle = cfg_.imu_roll_to_horizon_angle_sign * imu.roll;
+    float final_angle_error = 0.0f;
 
 #if HAS_VISION
     if (needs_vision && vision_available_) {
@@ -315,7 +320,7 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
         cv::Mat cropped_frame =
             frame(cv::Rect(0, y_start, cfg_.frame_width, roi_height));
 
-        HorizonLine vision_result = callVision(cropped_frame);
+        HorizonLine vision_result = callVision(cropped_frame, expected_angle);
 
         if (!vision_result.is_estimated) {
             int   crop_center_y   = y_start + (roi_height / 2);
@@ -334,6 +339,7 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
                 got_vision       = true;
                 final_confidence = vision_result.confidence;
                 current_source   = vision_result.source;
+                final_angle_error = vision_result.angle_error;
             }
         }
     }
@@ -355,6 +361,7 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
             0.55f - 0.005f * kalman_.uncertainty_px()
         );
         current_source = "IMU_ESTIMATED";
+        final_angle_error = 0.0f;
 
 #if !HAS_VISION
         initialized_ = true;
@@ -366,5 +373,5 @@ HorizonLine OptimizedHorizonDetector::process(const cv::Mat& frame) {
         last_imu_ = imu;
     }
 
-    return { current_angle_, kalman_.offset_y, !got_vision, final_confidence, current_source };
+    return { current_angle_, kalman_.offset_y, !got_vision, final_confidence, current_source, expected_angle, final_angle_error };
 }

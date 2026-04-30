@@ -53,11 +53,19 @@ std::string simpleHttpGet(const std::string& host, int port, const std::string& 
     return response.substr(header_end + 4);
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    bool use_debug_window = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--debug-window") {
+            use_debug_window = true;
+        }
+    }
+
     std::cout << "[LIVE-HORIZON] Starting Optimized Live Bridge" << std::endl;
     std::cout << "[LIVE-HORIZON] Snapshot source: http://127.0.0.1:8081/snapshot" << std::endl;
     std::cout << "[LIVE-HORIZON] Telemetry source: http://127.0.0.1:8081/telemetry" << std::endl;
     std::cout << "[LIVE-HORIZON] UDP output: 127.0.0.1:5000" << std::endl;
+    if (use_debug_window) std::cout << "[LIVE-HORIZON] Debug window ENABLED" << std::endl;
 
     int udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
     struct sockaddr_in servaddr;
@@ -178,18 +186,27 @@ int main() {
         output["frame"]["transport"] = "HTTP_SNAPSHOT_PROXY";
 
         // Optional Debug Visualization
-        static bool debug_window = false; 
-        if (debug_window) {
+        if (use_debug_window) {
             cv::Mat debug_img = frame.clone();
             cv::Point p1(0, height/2 + result.offset - (width/2) * std::tan(result.angle * M_PI / 180.0));
             cv::Point p2(width, height/2 + result.offset + (width/2) * std::tan(result.angle * M_PI / 180.0));
             cv::line(debug_img, p1, p2, cv::Scalar(0, 255, 0), 2);
             
-            std::string text = result.source + " conf=" + std::to_string(result.confidence);
-            cv::putText(debug_img, text, cv::Point(20, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 0), 2);
+            std::stringstream ss;
+            ss << std::fixed << std::setprecision(1);
+            ss << result.source << " conf=" << std::setprecision(2) << result.confidence;
+            cv::putText(debug_img, ss.str(), cv::Point(20, 30), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
+            
+            ss.str(""); ss.clear();
+            ss << "angle=" << result.angle << " exp=" << result.expected_angle << " err=" << result.angle_error;
+            cv::putText(debug_img, ss.str(), cv::Point(20, 60), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
             
             cv::imshow("AegisEdge Debug", debug_img);
-            if (cv::waitKey(1) == 'q') debug_window = false;
+            if (cv::waitKey(1) == 'q') {
+                std::cout << "[LIVE-HORIZON] Closing debug window..." << std::endl;
+                use_debug_window = false;
+                cv::destroyAllWindows();
+            }
         }
 
         std::string payload = output.dump();
@@ -204,10 +221,12 @@ int main() {
                       << " fps=" << std::fixed << std::setprecision(1) << fps 
                       << " source=" << result.source
                       << " angle=" << std::setprecision(1) << result.angle
+                      << " expected=" << result.expected_angle
+                      << " err=" << result.angle_error
                       << " offset=" << std::setprecision(1) << result.offset
                       << " conf=" << std::setprecision(2) << result.confidence 
-                      << " roll=" << std::setprecision(1) << roll 
-                      << " pitch=" << std::setprecision(1) << pitch 
+                      << " r=" << std::setprecision(1) << roll 
+                      << " p=" << std::setprecision(1) << pitch 
                       << " size=" << detector_width << "x" << detector_height << std::endl;
             frame_count = 0;
             last_fps_time = now;

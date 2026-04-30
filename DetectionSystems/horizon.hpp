@@ -38,6 +38,10 @@ struct HorizonLine {
     bool  is_estimated;
     float confidence;
     std::string source; // "IMU_ESTIMATED" or "VISION_HOUGH" or "VISION_HAILO"
+
+    // Debugging fields
+    float expected_angle = 0.0f;
+    float angle_error    = 0.0f;
 };
 
 struct DetectorConfig {
@@ -49,6 +53,10 @@ struct DetectorConfig {
     int   roi_height_base       = 256;
     float max_seconds_no_hailo  = 0.5f;
     int   roi_uncertainty_scale = 4;
+
+    // IMU conversion
+    // If the horizon angle moves opposite to the visual roll, switch this from -1.0f to +1.0f.
+    float imu_roll_to_horizon_angle_sign = -1.0f;
 
     // Hough Gating
     float max_hough_angle_error_deg = 8.0f;
@@ -131,7 +139,7 @@ private:
     std::string output_name_;
 #endif
 
-    HorizonLine callVision(const cv::Mat& cropped_frame);
+    HorizonLine callVision(const cv::Mat& cropped_frame, float expected_angle);
     void        preprocessFrame(const cv::Mat& src);
     int         adaptiveRoiHeight() const;
 };
