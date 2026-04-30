@@ -3,6 +3,9 @@
 #include <vector>
 #include <chrono>
 #include <thread>
+#include <iomanip>
+#include <algorithm>
+#include <cmath>
 #include <opencv2/opencv.hpp>
 #include <nlohmann/json.hpp>
 #include "../DetectionSystems/horizon.hpp"
@@ -50,7 +53,10 @@ std::string simpleHttpGet(const std::string& host, int port, const std::string& 
 }
 
 int main() {
-    std::cout << "[LIVE-HORIZON] Starting Optimized Live Bridge (Socket Mode)..." << std::endl;
+    std::cout << "[LIVE-HORIZON] Starting Optimized Live Bridge" << std::endl;
+    std::cout << "[LIVE-HORIZON] Snapshot source: http://127.0.0.1:8081/snapshot" << std::endl;
+    std::cout << "[LIVE-HORIZON] Telemetry source: http://127.0.0.1:8081/telemetry" << std::endl;
+    std::cout << "[LIVE-HORIZON] UDP output: 127.0.0.1:5000" << std::endl;
 
     int udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
     struct sockaddr_in servaddr;
@@ -59,41 +65,54 @@ int main() {
     servaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
     OptimizedHorizonDetector detector;
+    if (!detector.init("model.hef")) {
+        std::cerr << "[LIVE-HORIZON] Detector init failed, continuing with fallback if available" << std::endl;
+    }
     
     auto last_fps_time = std::chrono::steady_clock::now();
     int frame_count = 0;
+    int error_count = 0;
 
     while (true) {
         auto frame_start = std::chrono::steady_clock::now();
 
         std::string tel_data = simpleHttpGet("127.0.0.1", 8081, "/telemetry");
-        if (tel_data.empty()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            continue;
-        }
-
         json tel_json;
-        try {
-            tel_json = json::parse(tel_data);
-        } catch (...) {
-            continue;
+        bool telemetry_valid = false;
+        
+        if (!tel_data.empty()) {
+            try {
+                tel_json = json::parse(tel_data);
+                telemetry_valid = true;
+            } catch (...) {
+                if (error_count % 100 == 0) std::cerr << "[LIVE-HORIZON] Telemetry JSON parse failed" << std::endl;
+            }
         }
 
+        double roll = tel_json.value("roll", 0.0);
+        double pitch = tel_json.value("pitch", 0.0);
+        
         ImuData imu;
-        imu.roll = tel_json.value("roll", 0.0);
-        imu.pitch = tel_json.value("pitch", 0.0);
+        imu.roll = roll;
+        imu.pitch = pitch;
         detector.updateImu(imu);
 
         std::string img_data = simpleHttpGet("127.0.0.1", 8081, "/snapshot");
-        if (img_data.empty()) continue;
+        if (img_data.empty()) {
+            error_count++;
+            std::this_thread::sleep_for(std::chrono::milliseconds(30));
+            continue;
+        }
 
         std::vector<uchar> bytes(img_data.begin(), img_data.end());
         cv::Mat frame = cv::imdecode(bytes, cv::IMREAD_COLOR);
-        if (frame.empty()) continue;
+        if (frame.empty()) {
+            error_count++;
+            continue;
+        }
 
         HorizonLine result = detector.process(frame);
 
-        // 6. Convert to normalized points
         double width = frame.cols;
         double height = frame.rows;
         
@@ -110,12 +129,27 @@ int main() {
             points.push_back({{"x", x_norm}, {"y", y_norm}});
         }
 
-        json output = tel_json;
+        json output;
+        if (telemetry_valid) {
+            output = tel_json;
+        } else {
+            output = {
+                {"frame_id", 0},
+                {"timestamp_ms", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()},
+                {"roll", roll},
+                {"pitch", pitch},
+                {"yaw", 0.0},
+                {"altitude", 0.0},
+                {"position", {{"x", 0.0}, {"y", 0.0}}}
+            };
+        }
+
         output["horizon"]["detected"] = true;
         output["horizon"]["points"] = points;
         output["horizon"]["confidence"] = result.confidence;
         output["horizon"]["estimated"] = result.is_estimated;
         
+        output["frame"]["available"] = true;
         output["frame"]["endpoint"] = "http://127.0.0.1:8080/snapshot";
         output["frame"]["transport"] = "HTTP_SNAPSHOT_PROXY";
 
@@ -127,10 +161,12 @@ int main() {
         auto elapsed_fps = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_fps_time).count();
         if (elapsed_fps >= 2000) {
             double fps = frame_count * 1000.0 / elapsed_fps;
-            std::cout << "[LIVE-HORIZON] " 
-                      << (result.is_estimated ? "IMU ONLY" : "IMU + Hough")
+            std::cout << "[LIVE-HORIZON] mode=" << detector.visionModeName()
                       << " fps=" << std::fixed << std::setprecision(1) << fps 
-                      << " conf=" << result.confidence << std::endl;
+                      << " conf=" << result.confidence 
+                      << " est=" << (result.is_estimated ? "true" : "false")
+                      << " r=" << std::setprecision(1) << roll 
+                      << " p=" << std::setprecision(1) << pitch << std::endl;
             frame_count = 0;
             last_fps_time = now;
         }
@@ -139,6 +175,8 @@ int main() {
         auto process_time = std::chrono::duration_cast<std::chrono::milliseconds>(frame_end - frame_start).count();
         int sleep_ms = std::max(0, 50 - (int)process_time);
         std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+        
+        error_count++;
     }
 
     close(udp_sock);

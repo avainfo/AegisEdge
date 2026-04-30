@@ -70,7 +70,7 @@ def generate_fake_horizon(roll, pitch):
     ]
 
 def airsim_loop():
-    global latest_frame, latest_state_json, frame_id
+    global latest_frame, latest_state_json, latest_telemetry, frame_id
     
     print("Connecting to AirSim...")
     client = airsim.MultirotorClient()
@@ -142,8 +142,11 @@ def airsim_loop():
                     print(f"Warning: UDP send failed: {e}")
                 
             if frame_id % 30 == 0:
-                print(f"[FRAME] id={frame_id} bytes={len(frame_data) if frame_data else 0} ts={timestamp_ms}")
-                print(f"[UDP] sent telemetry to {UDP_IP}:{UDP_PORT}")
+                if not frames_only:
+                    print(f"[FRAME] id={frame_id} bytes={len(frame_data) if frame_data else 0} ts={timestamp_ms}")
+                    print(f"[UDP] sent telemetry to {UDP_IP}:{UDP_PORT}")
+                else:
+                    print(f"[FRAME] id={frame_id} serving via HTTP only")
             
         except Exception as e:
             print(f"Error in AirSim loop: {e}")
@@ -161,6 +164,8 @@ def generate_mjpeg():
         if frame is not None:
             yield (b'--frame\r\n'
                    b'Content-Type: image/png\r\n\r\n' + frame + b'\r\n')
+        
+        time.sleep(1.0 / TARGET_FPS)
         
 @app.route('/video')
 def video_feed():

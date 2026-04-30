@@ -13,15 +13,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(WITH_HOUGH "Enable Hough-based horizon detection" OFF)
 option(WITH_HAILO "Enable Hailo NPU horizon detection"   OFF)
-find_package(OpenCV REQUIRED)
 
-# nlohmann_json
-include(FetchContent)
-FetchContent_Declare(
-  json
-  URL https://github.com/nlohmann/json/releases/download/v3.11.2/json.tar.xz
-)
-FetchContent_MakeAvailable(json)
+find_package(OpenCV REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 # --- Test Executable ---
 add_executable(horizon_detection_test
