@@ -13,12 +13,21 @@ except ImportError:
     print("Run: pip install msgpack-rpc-python airsim")
     exit(1)
 
+try:
+    import cv2
+    import numpy as np
+    HAS_CV2 = True
+except ImportError:
+    HAS_CV2 = False
+
 app = Flask(__name__)
 
 latest_frame = None
 latest_state_json = None
 latest_telemetry = {}
 frames_only = False
+target_width = 512
+target_height = 288
 frame_id = 0
 frame_lock = threading.Lock()
 
@@ -81,6 +90,8 @@ def airsim_loop():
         print(f"AirSim connection failed: {e}")
         return
 
+    cv2_warned = False
+
     while True:
         start_time = time.time()
         
@@ -88,13 +99,30 @@ def airsim_loop():
             responses = client.simGetImages([
                 airsim.ImageRequest("0", airsim.ImageType.Scene, False, True)
             ])
+            
+            frame_data = None
             if responses and len(responses) > 0:
                 frame_data = responses[0].image_data_uint8
-                if not frame_data:
-                    print("Warning: AirSim returned empty image_data_uint8")
-            else:
-                frame_data = None
                 
+                # Resize if requested and CV2 available
+                if frame_data and HAS_CV2:
+                    try:
+                        nparr = np.frombuffer(frame_data, np.uint8)
+                        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                        if img is not None:
+                            resized = cv2.resize(img, (target_width, target_height), interpolation=cv2.INTER_AREA)
+                            success, encoded = cv2.imencode(".png", resized)
+                            if success:
+                                frame_data = encoded.tobytes()
+                    except Exception as resize_err:
+                        print(f"Resize failed: {resize_err}")
+                elif frame_data and not HAS_CV2 and not cv2_warned:
+                    print("Warning: cv2 or numpy missing, skipping resize.")
+                    cv2_warned = True
+
+                if not frame_data:
+                    print("Warning: AirSim returned empty image_data_uint8 or resize failed")
+            
             state = client.getMultirotorState()
             pos = state.kinematics_estimated.position
             ori = state.kinematics_estimated.orientation
@@ -142,11 +170,9 @@ def airsim_loop():
                     print(f"Warning: UDP send failed: {e}")
                 
             if frame_id % 30 == 0:
+                print(f"[FRAME] id={frame_id} size={target_width}x{target_height} bytes={len(frame_data) if frame_data else 0} fps_target={TARGET_FPS}")
                 if not frames_only:
-                    print(f"[FRAME] id={frame_id} bytes={len(frame_data) if frame_data else 0} ts={timestamp_ms}")
                     print(f"[UDP] sent telemetry to {UDP_IP}:{UDP_PORT}")
-                else:
-                    print(f"[FRAME] id={frame_id} serving via HTTP only")
             
         except Exception as e:
             print(f"Error in AirSim loop: {e}")
@@ -187,9 +213,19 @@ def get_telemetry():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--frames-only", action="store_true", help="Only serve frames/telemetry via HTTP, do not send UDP")
+    parser.add_argument("--width", type=int, default=512, help="Target frame width")
+    parser.add_argument("--height", type=int, default=288, help="Target frame height")
     args = parser.parse_args()
     
     frames_only = args.frames_only
+    target_width = args.width
+    target_height = args.height
+
+    print(f"[BRIDGE] Target snapshot size: {target_width}x{target_height}")
+    print(f"[BRIDGE] Frames only: {str(frames_only).lower()}")
+    print(f"[BRIDGE] HTTP snapshot: http://127.0.0.1:8081/snapshot")
+    print(f"[BRIDGE] HTTP telemetry: http://127.0.0.1:8081/telemetry")
+
     if frames_only:
         print("Running in --frames-only mode. UDP telemetry disabled.")
 
