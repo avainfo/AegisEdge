@@ -7,7 +7,6 @@ import urllib.request
 from collections import deque
 from flask import Flask, Response
 
-# Flask App for HTTP Image Proxy
 app = Flask(__name__)
 last_good_frame = None
 frame_lock = threading.Lock()
@@ -54,7 +53,6 @@ def snapshot_proxy():
     if mode == "STABLE":
         delay = random.uniform(0.01, 0.04)
     elif mode == "DEGRADED":
-        # Simulate severe packet loss or congestion for image
         if random.random() < 0.15:
             return "Video congestion error", 503
         delay = random.uniform(0.3, 1.2)
@@ -63,13 +61,11 @@ def snapshot_proxy():
         time.sleep(delay)
 
     try:
-        # Fetch from internal AirSim bridge
         with urllib.request.urlopen("http://127.0.0.1:8081/snapshot", timeout=1.0) as response:
             frame_data = response.read()
             with frame_lock:
                 last_good_frame = frame_data
             
-            # Sometimes in degraded mode, return the OLD frame instead of the new one to simulate stale data
             if mode == "DEGRADED" and random.random() < 0.3:
                 return Response(frame_data, mimetype='image/png', headers={'X-Proxy-Mode': 'DEGRADED', 'X-Video-Stale': 'true'})
             
@@ -81,7 +77,6 @@ def snapshot_proxy():
         return f"Upstream error: {e}", 502
 
 def run_http_proxy():
-    # Disable flask logging to keep terminal clean
     import logging
     log = logging.getLogger('werkzeug')
     log.setLevel(logging.ERROR)
@@ -89,7 +84,6 @@ def run_http_proxy():
     print("Starting HTTP Image Proxy on http://127.0.0.1:8080/snapshot")
     app.run(host='0.0.0.0', port=8080, threaded=True)
 
-# Start HTTP server in a thread
 http_thread = threading.Thread(target=run_http_proxy, daemon=True)
 http_thread.start()
 

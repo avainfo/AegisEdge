@@ -7,10 +7,10 @@
 #include <memory>
 
 // ---------------------------------------------------------------------------
-// Modos de compilacao:
-//   (sem flag)        -> IMU only
+// Build modes:
+//   (none)            -> IMU only
 //   -DWITH_HOUGH      -> IMU + Hough
-//   -DWITH_HAILO      -> IMU + Hailo (requer HailoRT instalado)
+//   -DWITH_HAILO      -> IMU + Hailo (requires HailoRT installed)
 // ---------------------------------------------------------------------------
 
 #ifdef WITH_HAILO
@@ -37,6 +37,11 @@ struct HorizonLine {
     float offset;
     bool  is_estimated;
     float confidence;
+    std::string source; // "IMU_ESTIMATED" or "VISION_HOUGH" or "VISION_HAILO"
+
+    // Debugging fields
+    float expected_angle = 0.0f;
+    float angle_error    = 0.0f;
 };
 
 struct DetectorConfig {
@@ -48,6 +53,18 @@ struct DetectorConfig {
     int   roi_height_base       = 256;
     float max_seconds_no_hailo  = 0.5f;
     int   roi_uncertainty_scale = 4;
+
+    // IMU conversion
+    // If the horizon angle moves opposite to the visual roll, switch this from -1.0f to +1.0f.
+    float imu_roll_to_horizon_angle_sign = -1.0f;
+    float imu_angle_smoothing_alpha      = 0.25f;
+
+    // Hough Gating
+    float max_hough_angle_error_deg    = 8.0f;
+    float max_hough_y_error_ratio      = 0.25f;
+    float max_hough_offset_correction_px = 25.0f;
+    float min_hough_confidence         = 0.65f;
+    float min_sky_ground_contrast      = 8.0f;
 
     int   model_input_w         = 224;
     int   model_input_h         = 224;
@@ -126,7 +143,8 @@ private:
     std::string output_name_;
 #endif
 
-    HorizonLine callVision(const cv::Mat& cropped_frame);
+    HorizonLine callVision(const cv::Mat& cropped_frame, float expected_angle);
+    float       computeSkyGroundContrast(const cv::Mat& gray, float mid_y, float angle_deg);
     void        preprocessFrame(const cv::Mat& src);
     int         adaptiveRoiHeight() const;
 };

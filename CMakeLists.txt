@@ -15,28 +15,37 @@ option(WITH_HOUGH "Enable Hough-based horizon detection" OFF)
 option(WITH_HAILO "Enable Hailo NPU horizon detection"   OFF)
 
 find_package(OpenCV REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
+# --- Test Executable ---
 add_executable(horizon_detection_test
     drone-sim/horizon_detection_test.cpp
     DetectionSystems/ohd.cpp
 )
+target_include_directories(horizon_detection_test PRIVATE DetectionSystems)
+target_link_libraries(horizon_detection_test PRIVATE ${OpenCV_LIBS} nlohmann_json::nlohmann_json)
 
-target_include_directories(horizon_detection_test PRIVATE
-    DetectionSystems
+# --- Live Bridge Executable ---
+add_executable(live_horizon_bridge
+    drone-sim/live_horizon_bridge.cpp
+    DetectionSystems/ohd.cpp
 )
-
-target_link_libraries(horizon_detection_test PRIVATE
-    ${OpenCV_LIBS}
+target_include_directories(live_horizon_bridge PRIVATE DetectionSystems)
+target_link_libraries(live_horizon_bridge PRIVATE 
+    ${OpenCV_LIBS} 
+    nlohmann_json::nlohmann_json
 )
 
 if(WITH_HAILO)
     target_compile_definitions(horizon_detection_test PRIVATE WITH_HAILO)
-    # Adjust if hailort is installed elsewhere
+    target_compile_definitions(live_horizon_bridge PRIVATE WITH_HAILO)
     find_library(HAILORT_LIB hailort REQUIRED)
     target_link_libraries(horizon_detection_test PRIVATE ${HAILORT_LIB})
+    target_link_libraries(live_horizon_bridge PRIVATE ${HAILORT_LIB})
     message(STATUS "Build mode: IMU + Hailo (NPU)")
 elseif(WITH_HOUGH)
     target_compile_definitions(horizon_detection_test PRIVATE WITH_HOUGH)
+    target_compile_definitions(live_horizon_bridge PRIVATE WITH_HOUGH)
     message(STATUS "Build mode: IMU + Hough (Classic CV)")
 else()
     message(STATUS "Build mode: IMU only (no vision)")
