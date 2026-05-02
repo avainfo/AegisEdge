@@ -122,7 +122,22 @@ int main(int argc, char* argv[]) {
             cfg.frame_width = frame.cols;
             cfg.frame_height = frame.rows;
             cfg.v_fov_degrees = 90.0f;
-            cfg.max_seconds_no_hailo = 0.5f;
+
+            cfg.roi_height_base = std::clamp(
+                static_cast<int>(frame.rows * 0.45f),
+                96,
+                frame.rows
+            );
+
+            cfg.max_seconds_no_hailo = 1.5f;
+
+            cfg.max_hough_angle_error_deg = 4.0f;
+            cfg.max_hough_y_error_ratio = 0.15f;
+            cfg.max_hough_offset_correction_px = 12.0f;
+            cfg.min_hough_confidence = 0.80f;
+            cfg.min_sky_ground_contrast = 14.0f;
+
+            cfg.imu_angle_smoothing_alpha = 0.35f;
 
             detector = std::make_unique<OptimizedHorizonDetector>(cfg);
             detector_width = frame.cols;
@@ -130,6 +145,17 @@ int main(int argc, char* argv[]) {
 
             std::cout << "[LIVE-HORIZON] Initializing detector for frame size "
                       << detector_width << "x" << detector_height << std::endl;
+            
+            std::cout << "[LIVE-HORIZON] Detector config: "
+                      << "roi_height_base=" << cfg.roi_height_base
+                      << " max_seconds_no_hailo=" << cfg.max_seconds_no_hailo
+                      << " max_angle_err=" << cfg.max_hough_angle_error_deg
+                      << " max_y_err_ratio=" << cfg.max_hough_y_error_ratio
+                      << " max_offset_correction=" << cfg.max_hough_offset_correction_px
+                      << " min_conf=" << cfg.min_hough_confidence
+                      << " min_contrast=" << cfg.min_sky_ground_contrast
+                      << " imu_alpha=" << cfg.imu_angle_smoothing_alpha
+                      << std::endl;
 
             if (!detector->init("model.hef")) {
                 std::cerr << "[LIVE-HORIZON] Detector init failed, continuing with fallback if available" << std::endl;
