@@ -29,6 +29,8 @@ ParseResult parseRawJson(const std::string& jsonString) {
             auto hz = j["horizon"];
             result.data.horizon.detected = hz.value("detected", false);
             result.data.horizon.confidence = hz.value("confidence", 0.0);
+            result.data.horizon.estimated = hz.value("estimated", true);
+            result.data.horizon.source = hz.value("source", "UNKNOWN");
             
             if (hz.contains("points") && hz["points"].is_array()) {
                 for (const auto& pt : hz["points"]) {
@@ -78,6 +80,8 @@ std::string serializeEnrichedJson(const TelemetryProcessor& processor) {
     json hz;
     hz["detected"] = tel.horizon.detected;
     hz["confidence"] = tel.horizon.confidence;
+    hz["estimated"] = tel.horizon.estimated;
+    hz["source"] = tel.horizon.source;
     
     json points = json::array();
     for (const auto& p : tel.horizon.points) {

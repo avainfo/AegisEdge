@@ -3,6 +3,7 @@
 #include "link_state.hpp"
 #include <vector>
 #include <cstdint>
+#include <string>
 
 struct Point2D {
     double x;
@@ -12,6 +13,8 @@ struct Point2D {
 struct HorizonData {
     bool detected = false;
     double confidence = 0.0;
+    bool estimated = true;
+    std::string source = "UNKNOWN";
     std::vector<Point2D> points;
 };
 
