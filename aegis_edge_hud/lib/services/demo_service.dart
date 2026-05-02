@@ -85,6 +85,8 @@ class DemoService {
       horizon: HorizonData(
         detected: true,
         confidence: stale ? 0.52 : 0.78,
+        estimated: false,
+        source: 'DEMO',
         points: [
           HorizonPoint(x: 0.05, y: hy + tilt * (-0.45)),
           HorizonPoint(x: 0.30, y: hy + tilt * (-0.20)),
