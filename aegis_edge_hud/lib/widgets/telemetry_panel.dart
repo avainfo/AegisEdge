@@ -28,7 +28,6 @@ class TelemetryPanel extends StatelessWidget {
           _row('PITCH', '${state.pitch.toStringAsFixed(1)}', '°', accent, isLost),
           _row('YAW', '${state.yaw.toStringAsFixed(1)}', '°', accent, isLost),
           const SizedBox(height: 4),
-          const SizedBox(height: 4),
           Divider(color: AegisColors.panelBorder, height: 12),
           _sectionLabel('LINK', accent),
           const SizedBox(height: 4),
@@ -48,6 +47,14 @@ class TelemetryPanel extends StatelessWidget {
     );
   }
 
+  String _displayHorizonSource(String source, bool estimated) {
+    if (source == "VISION_HOUGH") return "VISION / HOUGH";
+    if (source == "VISION_HAILO") return "VISION / HAILO";
+    if (source == "IMU_ESTIMATED") return "ATTITUDE / IMU";
+    if (estimated) return "ATTITUDE / IMU";
+    return "UNKNOWN";
+  }
+
   Widget _sectionLabel(String label, Color accent) => Text(
         label,
         style: GoogleFonts.exo2(
@@ -59,8 +66,7 @@ class TelemetryPanel extends StatelessWidget {
       );
 
   Widget _horizonSourceRow(String source, bool estimated, Color accent) {
-    final label = estimated ? 'IMU' : 'VISION';
-    final displaySource = source == "VISION_HOUGH" ? "HOUGH" : source;
+    final cleanLabel = _displayHorizonSource(source, estimated);
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -74,7 +80,7 @@ class TelemetryPanel extends StatelessWidget {
           ),
         ),
         Text(
-          '$displaySource / $label',
+          cleanLabel,
           style: GoogleFonts.exo2(
             color: accent,
             fontSize: 10,
