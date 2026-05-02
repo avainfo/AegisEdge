@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 echo "=========================================================="
-echo "[TEST 4] Starting Live Horizon Bridge (512x288 DEMO MODE)"
+echo "[DEBUG] Starting Live Horizon Bridge (512x288 DEBUG MODE)"
 echo "=========================================================="
 
 if [ ! -f "./build/live_horizon_bridge" ]; then
@@ -14,13 +14,13 @@ if [ ! -f "./build/live_horizon_bridge" ]; then
     exit 1
 fi
 
-echo "Debug window disabled for demo stability."
-echo "Use test4_debug_live_horizon_512.sh if visual debugging is needed."
+echo "WARNING: Debug mode is CPU intensive (OpenCV imshow)."
+echo "Do not use this for the final demo."
 echo "----------------------------------------------------------"
 echo "WATCH FOR:"
+echo "  - size=512x288"
 echo "  - fps>=15"
-echo "  - source=VISION_HOUGH (when reliable)"
-echo "  - source=IMU_ESTIMATED (fallback)"
+echo "  - angle vs expected"
 echo "=========================================================="
 
-./build/live_horizon_bridge
+./build/live_horizon_bridge --debug-window

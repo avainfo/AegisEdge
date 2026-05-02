@@ -19,12 +19,13 @@ Open one terminal for each of the following scripts (in order):
    `./test/test2_core.sh` (Central telemetry hub)
 3. **Terminal 3: AirSim Bridge**
    `./test/test3_airsim_bridge_512.sh` (Pulls images from AirSim)
-4. **Terminal 4: Horizon Detection**
-   `./test/test4_live_horizon_512.sh` (Processes images + IMU)
+4. **Terminal 4: Horizon Detection (DEMO MODE)**
+   `./test/test4_live_horizon_512.sh` (Stable demo without debug window)
+   *For visual horizon debugging only, use: `./test/test4_debug_live_horizon_512.sh`*
 5. **Terminal 5: Drone Patrol**
    `./test/test5_drone_patrol.sh` (Automates AirSim movement)
-6. **Terminal 6: Flutter HUD**
-   `./test/test6_flutter_hud.sh` (Visual Dashboard)
+6. **Terminal 6: Flutter HUD (RELEASE)**
+   `./test/test6_flutter_hud.sh` (Builds and runs the Linux release binary for better demo performance)
 
 ---
 
