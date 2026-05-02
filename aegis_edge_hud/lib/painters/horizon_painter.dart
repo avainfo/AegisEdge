@@ -67,14 +67,18 @@ class HorizonPainter extends CustomPainter {
 
     if (linkState != LinkState.lost) {
       final pct = (horizon.confidence * 100).toStringAsFixed(0);
+      final srcLabel = horizon.source == "VISION_HOUGH" || horizon.source == "VISION_HAILO" 
+          ? "VISION" : "IMU";
+          
       final tp = TextPainter(
         text: TextSpan(
-          text: 'CONF $pct%',
+          text: 'TRUST $pct% · $srcLabel',
           style: TextStyle(
             color: color.withOpacity(0.8),
-            fontSize: 11,
+            fontSize: 10,
             fontFamily: 'Exo2',
-            letterSpacing: 1.4,
+            letterSpacing: 1.2,
+            fontWeight: FontWeight.w600,
           ),
         ),
         textDirection: TextDirection.ltr,

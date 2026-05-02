@@ -23,7 +23,8 @@ Open one terminal for each of the following scripts (in order):
    `./test/test4_live_horizon_512.sh` (Stable demo without debug window)
    *For visual horizon debugging only, use: `./test/test4_debug_live_horizon_512.sh`*
 5. **Terminal 5: Drone Patrol**
-   `./test/test5_drone_patrol.sh` (Automates AirSim movement)
+   `./test/test5_drone_patrol.sh` (Normal automated movement)
+   *Or for recordings:* `./test/test5b_drone_patrol_cinematic.sh` (Smooth cinematic path)
 6. **Terminal 6: Flutter HUD (RELEASE)**
    `./test/test6_flutter_hud.sh` (Builds and runs the Linux release binary for better demo performance)
 
