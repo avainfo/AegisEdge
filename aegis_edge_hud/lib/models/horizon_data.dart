@@ -24,17 +24,23 @@ class HorizonData {
   final bool detected;
   final List<HorizonPoint> points;
   final double confidence;
+  final bool estimated;
+  final String source;
 
   const HorizonData({
     required this.detected,
     required this.points,
     required this.confidence,
+    required this.estimated,
+    required this.source,
   });
 
   factory HorizonData.empty() => const HorizonData(
         detected: false,
         points: [],
         confidence: 0.0,
+        estimated: true,
+        source: 'UNKNOWN',
       );
 
   factory HorizonData.fromJson(Map<String, dynamic> json) {
@@ -42,6 +48,8 @@ class HorizonData {
     return HorizonData(
       detected: json['detected'] as bool? ?? false,
       confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
+      estimated: json['estimated'] as bool? ?? true,
+      source: json['source'] as String? ?? 'UNKNOWN',
       points: rawPoints
           .map((p) => HorizonPoint.fromJson(p as Map<String, dynamic>))
           .toList(),
@@ -56,8 +64,11 @@ class HorizonData {
       other is HorizonData &&
           other.detected == detected &&
           other.confidence == confidence &&
+          other.estimated == estimated &&
+          other.source == source &&
           _listEq.equals(other.points, points);
 
   @override
-  int get hashCode => Object.hash(detected, confidence, Object.hashAll(points));
+  int get hashCode => Object.hash(
+      detected, confidence, estimated, source, Object.hashAll(points));
 }

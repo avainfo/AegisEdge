@@ -28,6 +28,7 @@ class TelemetryPanel extends StatelessWidget {
           _row('PITCH', '${state.pitch.toStringAsFixed(1)}', '°', accent, isLost),
           _row('YAW', '${state.yaw.toStringAsFixed(1)}', '°', accent, isLost),
           const SizedBox(height: 4),
+          const SizedBox(height: 4),
           Divider(color: AegisColors.panelBorder, height: 12),
           _sectionLabel('LINK', accent),
           const SizedBox(height: 4),
@@ -36,6 +37,12 @@ class TelemetryPanel extends StatelessWidget {
             const SizedBox(height: 6),
             _staleTag(),
           ],
+          const SizedBox(height: 4),
+          Divider(color: AegisColors.panelBorder, height: 12),
+          _sectionLabel('HORIZON', accent),
+          const SizedBox(height: 4),
+          _horizonSourceRow(
+              state.horizon.source, state.horizon.estimated, accent),
         ],
       ),
     );
@@ -50,6 +57,34 @@ class TelemetryPanel extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
       );
+
+  Widget _horizonSourceRow(String source, bool estimated, Color accent) {
+    final label = estimated ? 'IMU' : 'VISION';
+    final displaySource = source == "VISION_HOUGH" ? "HOUGH" : source;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          'SOURCE',
+          style: GoogleFonts.exo2(
+            color: AegisColors.textSecondary,
+            fontSize: 11,
+            letterSpacing: 1.5,
+          ),
+        ),
+        Text(
+          '$displaySource / $label',
+          style: GoogleFonts.exo2(
+            color: accent,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.0,
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _row(String label, String value, String unit, Color accent, bool stale) {
     return Padding(
