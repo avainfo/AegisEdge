@@ -4,6 +4,16 @@
 
 ---
 
+## Demo
+
+A short demo of the project is available here:
+
+[Watch the Aegis Edge demo on LinkedIn](https://www.linkedin.com/feed/update/urn:li:activity:7457829124796129280/)
+
+The demo shows the HUD reacting to live telemetry, degraded signal conditions, full signal loss, and recovery.
+
+---
+
 ## Architecture
 
 ```
